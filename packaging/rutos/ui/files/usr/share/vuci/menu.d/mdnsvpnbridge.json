@@ -1,0 +1,8 @@
+{
+  "services/mdns-vpn-bridge": {
+    "title": "mDNS VPN Bridge",
+    "index": 70,
+    "view": "",
+    "acls": ["services/mdns-vpn-bridge"]
+  }
+}

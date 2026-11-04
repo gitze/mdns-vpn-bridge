@@ -6,3 +6,10 @@ dist/
 # go
 *.test
 coverage.out
+
+# rutos ui build
+node_modules/
+.npm/
+packaging/rutos/ui/dest/
+packaging/rutos/ui/.plugin/
+packaging/rutos/ui/.env.plugin*

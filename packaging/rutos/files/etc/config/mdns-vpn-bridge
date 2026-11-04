@@ -16,3 +16,5 @@ config mdns-vpn-bridge 'main'
 	option services ''
 	# Stats log interval, 0 = off
 	option stats '300s'
+	# Local JSON status endpoint used by "mdns-vpn-bridge status" and the WebUI
+	option status_addr '127.0.0.1:53531'

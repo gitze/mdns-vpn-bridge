@@ -29,6 +29,9 @@ type Config struct {
 	Verbose bool
 	// Stats is the interval for periodic counter logs; 0 disables.
 	Stats time.Duration
+	// StatusAddr is the listen address of the JSON status endpoint
+	// (default 127.0.0.1:53531). Use "off" to disable it.
+	StatusAddr string
 	// Logf receives log lines. Defaults to the standard logger.
 	Logf func(format string, args ...any)
 
@@ -53,6 +56,9 @@ func (c *Config) defaults() {
 	}
 	if c.Logf == nil {
 		c.Logf = logStd
+	}
+	if c.StatusAddr == "" {
+		c.StatusAddr = "127.0.0.1:53531"
 	}
 	if c.retryDelay == 0 {
 		c.retryDelay = 3 * time.Second

@@ -5,18 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync/atomic"
+	"net/http"
 	"time"
 )
 
 const mdnsPort = 5353
-
-// Stats holds the relay counters.
-type Stats struct {
-	ToPeerPkts, ToPeerBytes uint64
-	ToLANPkts, ToLANBytes   uint64
-	DropToPeer, DropToLAN   uint64
-}
 
 // Run starts the relay and blocks until ctx is cancelled or a fatal error
 // occurs. The LAN address is retried for up to a minute, because on boot the
@@ -100,7 +93,33 @@ func Run(ctx context.Context, cfg Config) error {
 	cfg.Logf("relay: lan=%s (%s, net %s) ifindex=%d peer=%s:%d lan2peer=%s peer2lan=%s services=%d",
 		cfg.LanIf, lan, lanNet, ifi.Index, peerIP, cfg.PeerPort, l2p, p2l, len(cfg.Services))
 
-	var s Stats
+	cnt := &counters{}
+	base := Status{
+		LanIf:    cfg.LanIf,
+		LanIP:    lan.String(),
+		Peer:     peerIP.String(),
+		PeerPort: cfg.PeerPort,
+		Lan2Peer: l2p,
+		Peer2LAN: p2l,
+		Services: cfg.Services,
+		Started:  time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if addr := cfg.StatusAddr; addr != "" && addr != "off" {
+		srv := &http.Server{Addr: addr, Handler: statusHandler(cnt, base), ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			cfg.Logf("status: http://%s/_status", addr)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				cfg.Logf("status server: %v", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(shutdownCtx)
+		}()
+	}
+
 	dd := NewDedupe(cfg.DedupeTTL)
 	buf := make([]byte, 9000)
 	logf := cfg.Logf
@@ -111,11 +130,11 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		if filter {
 			if l2p == ModeQuery && !IsQuery(pkt) {
-				atomic.AddUint64(&s.DropToPeer, 1)
+				cnt.toPeerDrop.Add(1)
 				return
 			}
 			if !ServiceAllowed(pkt, cfg.Services) {
-				atomic.AddUint64(&s.DropToPeer, 1)
+				cnt.toPeerDrop.Add(1)
 				return
 			}
 		}
@@ -123,8 +142,8 @@ func Run(ctx context.Context, cfg Config) error {
 			logf("peer write: %v", err)
 			return
 		}
-		atomic.AddUint64(&s.ToPeerPkts, 1)
-		atomic.AddUint64(&s.ToPeerBytes, uint64(len(pkt)))
+		cnt.toPeerPkts.Add(1)
+		cnt.toPeerBytes.Add(uint64(len(pkt)))
 		if cfg.Verbose {
 			logf("->peer %dB from %s:%d query=%v", len(pkt), src, srcPort, IsQuery(pkt))
 		}
@@ -182,15 +201,15 @@ func Run(ctx context.Context, cfg Config) error {
 				continue
 			}
 			if p2l == ModeQuery && !IsQuery(pkt) {
-				atomic.AddUint64(&s.DropToLAN, 1)
+				cnt.toLANDrop.Add(1)
 				continue
 			}
 			if _, err := mcast.WriteToUDP(pkt, group); err != nil {
 				logf("lan multicast: %v", err)
 				continue
 			}
-			atomic.AddUint64(&s.ToLANPkts, 1)
-			atomic.AddUint64(&s.ToLANBytes, uint64(n))
+			cnt.toLANPkts.Add(1)
+			cnt.toLANBytes.Add(uint64(n))
 			if cfg.Verbose {
 				logf("->lan %dB (peer) query=%v", n, IsQuery(pkt))
 			}
@@ -204,9 +223,10 @@ func Run(ctx context.Context, cfg Config) error {
 			for {
 				select {
 				case <-t.C:
+					st := cnt.snapshot(base)
 					logf("stats: ->peer %d pkt/%d B (dropped %d) | ->lan %d pkt/%d B (dropped %d)",
-						atomic.LoadUint64(&s.ToPeerPkts), atomic.LoadUint64(&s.ToPeerBytes), atomic.LoadUint64(&s.DropToPeer),
-						atomic.LoadUint64(&s.ToLANPkts), atomic.LoadUint64(&s.ToLANBytes), atomic.LoadUint64(&s.DropToLAN))
+						st.ToPeer.Packets, st.ToPeer.Bytes, st.ToPeer.Dropped,
+						st.ToLAN.Packets, st.ToLAN.Bytes, st.ToLAN.Dropped)
 				case <-ctx.Done():
 					return
 				}

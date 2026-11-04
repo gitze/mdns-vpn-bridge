@@ -5,7 +5,8 @@ cd "$(dirname "$0")/.."
 GO=${GO:-go}
 $GO version >/dev/null
 
-LDFLAGS="-s -w"
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS="-s -w -X main.version=${VERSION}"
 mkdir -p build
 
 build() { # name goarch [goarm] [gomips]

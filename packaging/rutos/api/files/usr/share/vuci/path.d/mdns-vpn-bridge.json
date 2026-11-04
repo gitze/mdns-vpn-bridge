@@ -1,0 +1,3 @@
+[
+  { "/mdns_vpn_bridge_f/{?action}": "services/mdns_vpn_bridge" }
+]

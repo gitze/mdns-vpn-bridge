@@ -73,21 +73,33 @@ A ready-made unit with placeholders is in
 
 ### Teltonika RutOS / OpenWrt
 
-`packaging/rutos/` contains a Puffin-SDK app (procd init script, UCI config,
-SDK `Makefile`) that builds an `.ipk`:
+`packaging/rutos/` contains three Puffin-SDK apps that build `.ipk` packages:
+
+| Package | What it adds |
+|---|---|
+| `mdns-vpn-bridge` | binary, procd init, UCI config |
+| `mdns-vpn-bridge-api` | WebUI backend (Lua), path map, ACL |
+| `mdns-vpn-bridge-ui` | WebUI page: status + configuration form (Vue, compiled with Vite) |
 
 ```sh
 # inside the RutOS SDK
-cp -r /path/to/mdns-vpn-bridge/packaging/rutos apps/mdns-vpn-bridge
+cp -r /path/to/mdns-vpn-bridge/packaging/rutos   apps/mdns-vpn-bridge
+cp -r /path/to/mdns-vpn-bridge/packaging/rutos/api apps/mdns-vpn-bridge-api
+cp -r /path/to/mdns-vpn-bridge/packaging/rutos/ui  apps/mdns-vpn-bridge-ui
 cp build/linux-armv7 apps/mdns-vpn-bridge/files/bin/mdns-vpn-bridge
 cat apps/mdns-vpn-bridge/build.conf.snippet >> build.conf
-puf apps build mdns-vpn-bridge
-# -> dist/packages/mdns-vpn-bridge_<version>_cortexa7hf-neon-vfpv4.ipk
-opkg install mdns-vpn-bridge_*.ipk
+puf apps build mdns-vpn-bridge mdns-vpn-bridge-api mdns-vpn-bridge-ui
+
+opkg install mdns-vpn-bridge*.ipk
 uci set mdns-vpn-bridge.main.peer=198.51.100.1
 uci commit mdns-vpn-bridge
 /etc/init.d/mdns-vpn-bridge enable && /etc/init.d/mdns-vpn-bridge start
 ```
+
+With the UI package installed, **Services → mDNS VPN Bridge** shows the relay's
+state (interface, peer, filter, uptime, counters) and lets you edit the
+configuration and restart the service — no SSH needed. Details:
+[`packaging/rutos/README.md`](packaging/rutos/README.md).
 
 ## Configuration
 
@@ -102,7 +114,30 @@ uci commit mdns-vpn-bridge
 | `-services` | all | comma-separated allowlist of service types for `-lan2peer` (substring match) |
 | `-dedupe` | `2s` | loop-suppression window |
 | `-stats` | `300s` | stats log interval, `0` = off |
+| `-status` | `127.0.0.1:53531` | HTTP status endpoint (`off` disables it) |
 | `-v` | off | log every forwarded packet |
+
+### Status
+
+Every instance serves its state as JSON on `http://127.0.0.1:53531/_status`;
+the same values are available on the command line:
+
+```console
+$ mdns-vpn-bridge status
+mdns-vpn-bridge v0.2.0
+  lan        ens18 (192.0.2.5)
+  peer       198.51.100.2:53530
+  filter     lan2peer=query peer2lan=all
+  services   -
+  uptime     3d04h
+  -> peer    10422 packets / 1.4 MB (dropped 118)
+  -> lan     2214 packets / 302.1 kB (dropped 0)
+
+$ mdns-vpn-bridge status --json | jq .to_peer
+{ "packets": 10422, "bytes": 1402331, "dropped": 118 }
+```
+
+`mdns-vpn-bridge version` prints the build version.
 
 ### The filter — make it asymmetric
 

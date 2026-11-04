@@ -25,13 +25,14 @@ start_service() {
 	config_get peer2lan main peer2lan "all"
 	config_get services main services ""
 	config_get stats main stats "300s"
+	config_get status_addr main status_addr "127.0.0.1:53531"
 
 	if [ -z "$peer" ]; then
 		echo "mdns-vpn-bridge: no peer configured (uci set mdns-vpn-bridge.main.peer=<overlay-ip>)" >&2
 		return 1
 	fi
 
-	args="-lan $lan_if -peer $peer -peerport $peerport -lan2peer $lan2peer -peer2lan $peer2lan -stats $stats"
+	args="-lan $lan_if -peer $peer -peerport $peerport -lan2peer $lan2peer -peer2lan $peer2lan -stats $stats -status $status_addr"
 	[ -n "$services" ] && args="$args -services $services"
 
 	procd_open_instance
