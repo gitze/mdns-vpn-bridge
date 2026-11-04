@@ -1,0 +1,18 @@
+config mdns-vpn-bridge 'main'
+	option enabled '1'
+	# LAN interface carrying mDNS (home side: e.g. eth0/ens18, router side: br-lan)
+	option lan_if 'br-lan'
+	# Overlay (Tailscale/WireGuard) IPv4 of the peer side
+	option peer ''
+	# UDP port of the unicast link (must match on both sides)
+	option peerport '53530'
+	# LAN -> peer: 'query' (DNS queries only) or 'all'
+	# On a metered/chatty side use 'query'.
+	option lan2peer 'all'
+	# peer -> LAN: 'all' or 'query'
+	option peer2lan 'all'
+	# Optional: allowed service types for LAN -> peer (substring match,
+	# comma separated), e.g. '_http,_esphomelib'. Empty = all.
+	option services ''
+	# Stats log interval, 0 = off
+	option stats '300s'

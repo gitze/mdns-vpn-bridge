@@ -1,0 +1,8 @@
+# build artefacts
+build/
+dist/
+*.ipk
+
+# go
+*.test
+coverage.out

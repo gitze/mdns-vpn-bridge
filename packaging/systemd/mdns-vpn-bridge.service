@@ -1,0 +1,25 @@
+[Unit]
+Description=mDNS VPN bridge — mDNS/Bonjour relay between two LANs over a unicast overlay
+Documentation=https://github.com/OWNER/mdns-vpn-bridge
+After=network-online.target
+Wants=network-online.target
+# If the overlay runs as its own service (e.g. tailscaled), add it here so the
+# bridge starts after it:
+# After=tailscaled.service
+
+[Service]
+Type=simple
+# Replace the interface and peer address with your own values.
+# lan2peer=query keeps the announcements of this (chatty) side off the link;
+# see README "Filter".
+ExecStart=/usr/local/bin/mdns-vpn-bridge \
+    -lan REPLACE_WITH_LAN_IFACE \
+    -peer REPLACE_WITH_PEER_OVERLAY_IP \
+    -lan2peer query \
+    -peer2lan all \
+    -stats 300s
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

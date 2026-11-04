@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { name: linux-amd64,  goarch: amd64 }
+          - { name: linux-arm64,  goarch: arm64 }
+          - { name: linux-armv7,  goarch: arm,   goarm: 7 }
+          - { name: linux-armv6,  goarch: arm,   goarm: 6 }
+          - { name: linux-mips,   goarch: mips,  gomips: hardfloat }
+          - { name: linux-mipsle, goarch: mipsle }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: test
+        run: go test ./...
+      - name: build
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          GOMIPS: ${{ matrix.gomips }}
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+            -o "mdns-vpn-bridge-${{ matrix.name }}" ./cmd/mdns-vpn-bridge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: mdns-vpn-bridge-${{ matrix.name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: mdns-vpn-bridge-*
+          generate_release_notes: true

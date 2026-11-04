@@ -1,0 +1,49 @@
+#!/bin/sh /etc/rc.common
+# mdns-vpn-bridge — procd service for OpenWrt / Teltonika RutOS.
+# Configuration lives in /etc/config/mdns-vpn-bridge (UCI).
+USE_PROCD=1
+START=95
+STOP=10
+
+PROG="/usr/local/bin/mdns-vpn-bridge"
+CONFIG="mdns-vpn-bridge"
+
+start_service() {
+	config_load "$CONFIG"
+
+	local enabled lan_if peer peerport lan2peer peer2lan services stats args
+	config_get_bool enabled main enabled 1
+	[ "$enabled" = "1" ] || {
+		echo "mdns-vpn-bridge: disabled (uci set mdns-vpn-bridge.main.enabled=1)" >&2
+		return 0
+	}
+
+	config_get lan_if main lan_if "br-lan"
+	config_get peer main peer ""
+	config_get peerport main peerport "53530"
+	config_get lan2peer main lan2peer "all"
+	config_get peer2lan main peer2lan "all"
+	config_get services main services ""
+	config_get stats main stats "300s"
+
+	if [ -z "$peer" ]; then
+		echo "mdns-vpn-bridge: no peer configured (uci set mdns-vpn-bridge.main.peer=<overlay-ip>)" >&2
+		return 1
+	fi
+
+	args="-lan $lan_if -peer $peer -peerport $peerport -lan2peer $lan2peer -peer2lan $peer2lan -stats $stats"
+	[ -n "$services" ] && args="$args -services $services"
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command "$PROG" $args
+	procd_set_param respawn 3600 5 0
+	procd_set_param limits core="0"
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG"
+}
