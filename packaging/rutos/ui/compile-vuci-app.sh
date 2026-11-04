@@ -15,7 +15,7 @@ set -euo pipefail
 SRC_DIR="src"
 DEST_DIR="dest"
 TEMP_DIR=".plugin/temp"
-MENU_DIRS="files/usr/share/vuci/menu.d files/usr/local/share/vuci/menu.d"
+MENU_DIRS="files/share/vuci/menu.d files/usr/share/vuci/menu.d"
 VITE_CONFIG="vite.config.js"
 
 die() { echo "ERROR: $*" >&2; exit 1; }

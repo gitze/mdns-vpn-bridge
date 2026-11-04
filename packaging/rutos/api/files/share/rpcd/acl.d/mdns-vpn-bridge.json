@@ -1,0 +1,14 @@
+{
+  "services/mdns-vpn-bridge": {
+    "description": "mDNS VPN Bridge API",
+    "read": {
+      "api": {
+        "/mdns_vpn_bridge_f/status": ["*"],
+        "/mdns_vpn_bridge_f/config": ["*"]
+      }
+    },
+    "write": {
+      "api": ["/mdns_vpn_bridge_f/actions/*"]
+    }
+  }
+}

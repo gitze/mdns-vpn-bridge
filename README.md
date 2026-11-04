@@ -78,8 +78,8 @@ A ready-made unit with placeholders is in
 | Package | What it adds |
 |---|---|
 | `mdns-vpn-bridge` | binary, procd init, UCI config |
-| `mdns-vpn-bridge-api` | WebUI backend (Lua), path map, ACL |
-| `mdns-vpn-bridge-ui` | WebUI page: status + configuration form (Vue, compiled with Vite) |
+| `mdns-vpn-bridge-api` | WebUI backend (Lua), path map, ACL — *reference only, see below* |
+| `mdns-vpn-bridge-ui` | WebUI page: status + configuration form (Vue, compiled with Vite) — *reference only* |
 
 ```sh
 # inside the RutOS SDK
@@ -96,10 +96,24 @@ uci commit mdns-vpn-bridge
 /etc/init.d/mdns-vpn-bridge enable && /etc/init.d/mdns-vpn-bridge start
 ```
 
-With the UI package installed, **Services → mDNS VPN Bridge** shows the relay's
-state (interface, peer, filter, uptime, counters) and lets you edit the
-configuration and restart the service — no SSH needed. Details:
-[`packaging/rutos/README.md`](packaging/rutos/README.md).
+The API and UI packages are a reference implementation, not a supported path:
+on RutOS 7.25.3 `/www` is a read-only squashfs and the WebUI is a compiled SPA
+whose view chunks and `menu.d/menu.json` are baked into the image, so a page
+cannot be added by `opkg install`. Verified restrictions and the exact evidence
+are in [`packaging/rutos/README.md`](packaging/rutos/README.md). Use
+`mdns-vpn-bridge status`, UCI and the procd service instead.
+
+## Verified deployment
+
+Running on a Teltonika RUTX50 in a garden site, bridged to a Debian VM at home
+over Tailscale (5G uplink):
+
+- `webui.local` → `198.51.100.152`, `sensor.local` → the ESPHome node,
+  `http://webui.local/` answers 302 — resolved from the other site's LAN
+- counters after the migration: ~350 packets / 150 kB per 3 minutes in the
+  garden→home direction, 28 packets / 3 kB home→garden (no filter on the
+  garden side, which is the intended asymmetry)
+- package installs via `opkg`, starts through procd (`S95`), survives reboot
 
 ## Configuration
 
