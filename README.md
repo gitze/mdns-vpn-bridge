@@ -114,6 +114,8 @@ over Tailscale (5G uplink):
   garden→home direction, 28 packets / 3 kB home→garden (no filter on the
   garden side, which is the intended asymmetry)
 - package installs via `opkg`, starts through procd (`S95`), survives reboot
+- the same version runs as `mdns-vpn-bridge.service` (systemd) on the Debian
+  side; both instances report `mdns-vpn-bridge status` with `v0.2.0`
 
 ## Configuration
 
