@@ -23,8 +23,14 @@ import (
 	"mdns-vpn-bridge/internal/relay"
 )
 
-// version is set at build time via -ldflags "-X main.version=...".
-var version = "dev"
+// version and commit are set at build time via
+// -ldflags "-X main.version=... -X main.commit=...". A release build pins
+// version to the release number and commit to the source revision it was built
+// from, instead of a git-describe string that can read like a bare commit hash.
+var (
+	version = "dev"
+	commit  = ""
+)
 
 const defaultStatusAddr = "127.0.0.1:53531"
 
@@ -33,6 +39,8 @@ func main() {
 		switch os.Args[1] {
 		case "status":
 			os.Exit(cmdStatus(os.Args[2:]))
+		case "check":
+			os.Exit(cmdCheck(os.Args[2:]))
 		case "version", "-version", "--version":
 			fmt.Println(version)
 			return
@@ -47,6 +55,7 @@ func main() {
 
 // relayOptions holds the parsed relay flags.
 type relayOptions struct {
+	config   string
 	lanIf    string
 	lanIP    string
 	peer     string
@@ -67,6 +76,7 @@ type relayOptions struct {
 func newRelayFlagSet(o *relayOptions) *flag.FlagSet {
 	fs := flag.NewFlagSet("mdns-vpn-bridge", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	fs.StringVar(&o.config, "config", "", "load settings from a JSON config file (e.g. /etc/mdns-vpn-bridge/config.json); explicit CLI flags override file values")
 	fs.StringVar(&o.lanIf, "lan", "", "LAN interface carrying mDNS (e.g. ens18, br-lan)")
 	fs.StringVar(&o.lanIP, "lanip", "", "override the LAN IPv4 (default: taken from -lan)")
 	fs.StringVar(&o.peer, "peer", "", "peer unicast address on the overlay (Tailscale/WireGuard IPv4)")
@@ -87,6 +97,8 @@ func printUsage(w io.Writer, fs *flag.FlagSet) {
 
 usage:
   mdns-vpn-bridge -lan <iface> -peer <overlay-ip> [options]   run the relay
+  mdns-vpn-bridge -config <file.json>                         run from a config file
+  mdns-vpn-bridge check -config <file.json> [options]         validate config, no daemon
   mdns-vpn-bridge status [-addr <host:port>] [-json]          query a running instance
   mdns-vpn-bridge version
 
@@ -94,50 +106,43 @@ Typical asymmetric setup across a metered link:
   chatty side:  -lan2peer query -peer2lan all
   quiet side:   -lan2peer all   -peer2lan all
 
+A JSON config file (see -config, e.g. /etc/mdns-vpn-bridge/config.json) sets the
+same fields; explicit CLI flags override file values. Use "check" to validate a
+file offline.
+
 relay options:
-`, version)
+`, versionLabel())
 	fs.SetOutput(w)
 	fs.PrintDefaults()
 }
 
+// versionLabel returns the version with the source revision appended when a
+// build embedded one, e.g. "0.3.0 (ac38fa0)". The plain "version" subcommand
+// still prints just the version number so scripts can parse it.
+func versionLabel() string {
+	if commit != "" {
+		return version + " (" + commit + ")"
+	}
+	return version
+}
+
 func runRelay(args []string) int {
-	var o relayOptions
-	fs := newRelayFlagSet(&o)
-	fs.Usage = func() { printUsage(fs.Output(), fs) }
-
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
+	o, fs, code := parseRelayFlags(args, os.Stderr)
+	if code >= 0 {
+		return code
+	}
+	// Resolve and validate exactly as the check command does: same normalization,
+	// same pure validation. Only the relay command proceeds to Run.
+	cfg, err := effectiveConfig(o, fs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: %v\n", err)
+		return 2
+	}
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: %v\n", err)
+		if cfg.LanIf == "" || cfg.Peer == "" {
+			printUsage(os.Stderr, fs)
 		}
-		// flag has already printed the error and the usage text.
-		return 2
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: unexpected argument %q; the relay takes flags only (see -h)\n", fs.Arg(0))
-		printUsage(os.Stderr, fs)
-		return 2
-	}
-	if o.dedupe < 0 {
-		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: -dedupe must not be negative (0 selects the default %s)\n", 2*time.Second)
-		return 2
-	}
-
-	cfg := relay.Config{
-		LanIf:      o.lanIf,
-		LanIP:      o.lanIP,
-		Peer:       o.peer,
-		PeerPort:   o.peerPort,
-		LinkBind:   o.linkBind,
-		Lan2Peer:   relay.Mode(o.lan2peer),
-		Peer2LAN:   relay.Mode(o.peer2lan),
-		Services:   relay.ParseServices(o.services),
-		DedupeTTL:  o.dedupe,
-		Verbose:    o.verbose,
-		Stats:      o.stats,
-		StatusAddr: o.status,
-	}
-	if cfg.LanIf == "" || cfg.Peer == "" {
-		printUsage(os.Stderr, fs)
 		return 2
 	}
 

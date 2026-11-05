@@ -207,15 +207,13 @@ func bindLinkWithRetry(ctx context.Context, cfg Config, bind string) (*net.UDPCo
 // silently dead. A LAN watchdog re-checks the interface address, index and
 // flags periodically and reports a change the same way (R1).
 func Run(ctx context.Context, cfg Config) error {
-	cfg.defaults()
-	if cfg.LanIf == "" || cfg.Peer == "" {
-		return fmt.Errorf("relay: LanIf and Peer are required")
-	}
-	// Reject a negative TTL here too, not only in the CLI: a negative window
-	// makes every packet look stale and silently disables loop suppression,
-	// which is the whole point of the dedupe map.
-	if cfg.DedupeTTL < 0 {
-		return fmt.Errorf("relay: dedupe TTL %s must not be negative", cfg.DedupeTTL)
+	// One shared normalization + validation boundary: the CLI, the config-file
+	// loader and Run all call exactly these two methods, so the "check"
+	// subcommand reports the same verdict Run would. Validate is pure (no
+	// socket, no interface lookup); the network-dependent checks stay below.
+	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
