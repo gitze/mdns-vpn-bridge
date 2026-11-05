@@ -1,6 +1,0 @@
-[
-  {
-    "endpoint": "/mdns_vpn_bridge_f/{?action}",
-    "lua_service": "services/mdns_vpn_bridge"
-  }
-]

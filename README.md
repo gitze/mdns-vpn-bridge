@@ -73,35 +73,30 @@ A ready-made unit with placeholders is in
 
 ### Teltonika RutOS / OpenWrt
 
-`packaging/rutos/` contains three Puffin-SDK apps that build `.ipk` packages:
+[`packaging/rutos/`](packaging/rutos/README.md) builds the relay package:
+`mdns-vpn-bridge` contains the binary, procd init script and UCI defaults.
 
-| Package | What it adds |
-|---|---|
-| `mdns-vpn-bridge` | binary, procd init, UCI config |
-| `mdns-vpn-bridge-api` | WebUI backend (Lua), path map, ACL — *reference only, see below* |
-| `mdns-vpn-bridge-ui` | WebUI page: status + configuration form (Vue, compiled with Vite) — *reference only* |
+The optional **mdns-vpn-bridge-rutos-ui** is a separate project, with its own
+Vue UI, Lua adapter, build and tests. It depends on the relay package; it is
+not part of this source tree. The relay does not require the UI.
 
 ```sh
-# inside the RutOS SDK
-cp -r /path/to/mdns-vpn-bridge/packaging/rutos   apps/mdns-vpn-bridge
-cp -r /path/to/mdns-vpn-bridge/packaging/rutos/api apps/mdns-vpn-bridge-api
-cp -r /path/to/mdns-vpn-bridge/packaging/rutos/ui  apps/mdns-vpn-bridge-ui
+# inside the RutOS SDK, build the relay itself
+cp -r /path/to/mdns-vpn-bridge/packaging/rutos apps/mdns-vpn-bridge
 cp build/linux-armv7 apps/mdns-vpn-bridge/files/bin/mdns-vpn-bridge
-cat apps/mdns-vpn-bridge/build.conf.snippet >> build.conf
-puf apps build mdns-vpn-bridge mdns-vpn-bridge-api mdns-vpn-bridge-ui
+# configure the main app as described in packaging/rutos/build.conf.snippet
+puf apps build mdns-vpn-bridge
 
-opkg install mdns-vpn-bridge*.ipk
+# on the router, install the main package (or use the existing installation)
+opkg install mdns-vpn-bridge_*.ipk
 uci set mdns-vpn-bridge.main.peer=198.51.100.1
 uci commit mdns-vpn-bridge
 /etc/init.d/mdns-vpn-bridge enable && /etc/init.d/mdns-vpn-bridge start
 ```
 
-The API and UI packages are a reference implementation, not a supported path:
-on RutOS 7.25.3 `/www` is a read-only squashfs and the WebUI is a compiled SPA
-whose view chunks and `menu.d/menu.json` are baked into the image, so a page
-cannot be added by `opkg install`. Verified restrictions and the exact evidence
-are in [`packaging/rutos/README.md`](packaging/rutos/README.md). Use
-`mdns-vpn-bridge status`, UCI and the procd service instead.
+Build the optional UI in its own checkout:
+`cd /path/to/mdns-vpn-bridge-rutos-ui && make`.
+The relay itself is administered using `mdns-vpn-bridge status`, UCI and procd.
 
 ## Verified deployment
 
