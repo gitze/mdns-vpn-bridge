@@ -7,18 +7,60 @@
 
 ## Build
 
-From the relay repository:
+From the relay repository, the self-contained release builder produces the IPK
+and the GUI-uploadable bundle (no SDK required, deterministic output):
 
 ```sh
-scripts/build.sh
-cp build/linux-armv7 packaging/rutos/files/bin/mdns-vpn-bridge
+VERSION=0.3.0 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
 ```
 
-Inside the RutOS SDK, register the relay app using `build.conf.snippet`, then:
+Outputs under `dist/` (git-ignored):
 
-```sh
-puf apps build mdns-vpn-bridge
-```
+- `mdns-vpn-bridge_<ver>_cortexa7hf-neon-vfpv4.ipk` — `opkg install`
+- `mdns-vpn-bridge_<ver>_RUTX_00.07.25.3.tar.gz` — RutOS WebUI upload (`main` +
+  IPK + `Packages.gz`; a raw IPK is rejected by the uploader)
+- `mdns-vpn-bridge_<ver>_linux-amd64.tar.gz` — Debian/amd64 tarball: the static
+  binary, the hardened systemd unit and an install README. No auto-installer;
+  the README lists the manual `install`/`systemctl` steps.
+- `sha256sums.txt` — with `ALLARCH=1` this also covers the `linux-*` binaries.
+
+`build_ipk.py` / `build_bundle.py` are the underlying steps if you only need one
+of them. Alternatively build inside the RutOS SDK: `scripts/build.sh`, copy
+`build/linux-armv7` to `files/bin/mdns-vpn-bridge`, register the app with
+`build.conf.snippet`, then `puf apps build mdns-vpn-bridge`.
+
+## Package layout
+
+| In the IPK | Lands at (dest root `/usr/local`) |
+|---|---|
+| `bin/mdns-vpn-bridge` | `/usr/local/bin/mdns-vpn-bridge` |
+| `etc/init.d/mdns-vpn-bridge` | `/etc/init.d/mdns-vpn-bridge` |
+| `etc/config/mdns-vpn-bridge` | `/etc/config/mdns-vpn-bridge` |
+
+The control archive carries `conffiles` and the two maintainer scripts
+(`postinst`/`prerm`). There is no `preinst`/`postrm` and no custom backup guard.
+
+## Configuration preservation on upgrade
+
+- `/etc/config/mdns-vpn-bridge` is declared in `conffiles`. On upgrade opkg keeps
+  a user-modified configuration and writes the new default as
+  `/etc/config/mdns-vpn-bridge-opkg` (verified with the router's opkg 0.6.3).
+  This is the only preservation mechanism: there is no custom backup, nothing is
+  staged under `/tmp`, and no stale copy can be restored over the user's config.
+
+## Install / upgrade lifecycle
+
+- `postinst` runs the native `default_postinst` (`/lib/functions.sh`). Per that
+  function it **starts** the package init script, and on a fresh install
+  (`PKG_UPGRADE != 1`) it also **enables** it. It additionally loads OS-user ubus
+  ACLs, applies `etc/permtab.d` and `etc/uci-defaults` and restores `/etc/config`
+  permissions. It never overwrites an existing UCI config.
+- `prerm` runs the native `default_prerm` only: on upgrade (`PKG_UPGRADE = 1`) it
+  stops the running instance but does not disable it, so an upgrade is
+  stop → install → start and the service stays enabled; on removal it disables
+  and stops.
+- `release.sh` and the underlying builders only write files under `dist/`; they
+  never install, start or restart anything and never touch a router.
 
 ## Install and configure
 

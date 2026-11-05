@@ -5,8 +5,14 @@ cd "$(dirname "$0")/.."
 GO=${GO:-go}
 $GO version >/dev/null
 
-VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+# A release build pins VERSION explicitly (e.g. VERSION=0.3.0) so the embedded
+# string is the release number, not a git-describe value that can read like a
+# bare commit hash. COMMIT records the source revision for provenance.
+VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
+COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "")}
 LDFLAGS="-s -w -X main.version=${VERSION}"
+[ -n "$COMMIT" ] && LDFLAGS="$LDFLAGS -X main.commit=${COMMIT}"
+echo "version=${VERSION} commit=${COMMIT:-<none>}"
 mkdir -p build
 
 build() { # name goarch [goarm] [gomips]

@@ -1,0 +1,78 @@
+mdns-vpn-bridge — Debian/amd64 static binary + systemd unit + sample config
+===========================================================================
+
+Contents
+  mdns-vpn-bridge            static binary (no cgo, no runtime dependencies;
+                             runs on glibc and musl systems)
+  mdns-vpn-bridge.service    hardened systemd unit (DynamicUser, sandbox);
+                             starts the relay with -config only
+  config.json                sample JSON configuration with placeholders
+  README                     this file
+  LICENSE                    MIT
+
+There is no installer script on purpose: nothing here runs automatically and no
+system file is touched until you copy it yourself. The commands below are all
+manual.
+
+Manual install
+  1. Install the binary:
+       install -m 0755 mdns-vpn-bridge /usr/local/bin/mdns-vpn-bridge
+
+  2. Install the configuration file (root:root mode 0644; it holds no secrets):
+       install -d -m 0755 /etc/mdns-vpn-bridge
+       install -m 0644 -o root -g root config.json \
+         /etc/mdns-vpn-bridge/config.json
+
+  3. Edit /etc/mdns-vpn-bridge/config.json and replace the placeholders
+     REPLACE_WITH_LAN_IFACE and REPLACE_WITH_PEER_OVERLAY_IP with your LAN
+     interface and the peer's overlay address. Every key and its default is
+     documented in the included configuration.md.
+
+  4. Validate the file before it goes live. This is offline: it opens no socket
+     and does not check that the interface exists:
+       mdns-vpn-bridge check -config /etc/mdns-vpn-bridge/config.json
+     A non-zero exit means the file is invalid — fix it; nothing has changed.
+
+  5. Install the configuration reference, then the unit and start it:
+       install -d -m 0755 /usr/share/doc/mdns-vpn-bridge
+       install -m 0644 configuration.md /usr/share/doc/mdns-vpn-bridge/configuration.md
+       install -m 0644 mdns-vpn-bridge.service \
+         /etc/systemd/system/mdns-vpn-bridge.service
+       systemctl daemon-reload
+       systemctl enable --now mdns-vpn-bridge.service
+
+  6. Verify:
+       mdns-vpn-bridge version
+       mdns-vpn-bridge status
+
+Changing the configuration
+  There is NO hot reload. The file is read once at startup; edit, validate,
+  save atomically and restart:
+       # write the new content, then validate it before it is live:
+       install -m 0644 -o root -g root config.json.new \
+         /etc/mdns-vpn-bridge/config.json.tmp
+       mdns-vpn-bridge check -config /etc/mdns-vpn-bridge/config.json.tmp
+       # Only if validation succeeded, save atomically:
+       mv /etc/mdns-vpn-bridge/config.json.tmp /etc/mdns-vpn-bridge/config.json
+       systemctl restart mdns-vpn-bridge
+
+Uninstall
+  systemctl disable --now mdns-vpn-bridge.service
+  rm -f /etc/systemd/system/mdns-vpn-bridge.service \
+        /usr/local/bin/mdns-vpn-bridge
+  rm -rf /etc/mdns-vpn-bridge
+
+Notes
+  - The relay needs no privileges: the mDNS port (5353), the unicast link port
+    and the status port are all above 1024, and joining the multicast group
+    needs no capability. The unit therefore runs as a transient unprivileged
+    user with an empty capability set. That user can still read the config
+    because it is mode 0644.
+  - ExecStart takes only -config, so the file is the single source of truth. A
+    CLI flag given on the command line would override the file value; the
+    shipped unit passes none.
+  - Run exactly one relay per site; two instances conflict on the local
+    mDNS/link ports.
+  - Peer address, the asymmetric filter and the firewall rule that is the real
+    security boundary are described in the repository README and in
+    docs/configuration.md.

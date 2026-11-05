@@ -1,0 +1,18 @@
+#!/bin/sh
+# mdns-vpn-bridge prerm.
+#
+# Runs the native default_prerm (/lib/functions.sh) only; it adds no policy of
+# its own. Per that function:
+#   - upgrade (PKG_UPGRADE = 1): stops the running instance but does NOT disable
+#     it, so the service stays enabled across the upgrade and default_postinst
+#     starts it again;
+#   - removal: disables and stops the init script.
+set -e
+
+IPKG_INSTROOT=${IPKG_INSTROOT:-$D}
+if [ -s "$IPKG_INSTROOT/lib/functions.sh" ]; then
+	. "$IPKG_INSTROOT/lib/functions.sh"
+	[ -n "$IPKG_INSTROOT" ] && set -x || true
+	default_prerm $0 $@
+fi
+exit 0

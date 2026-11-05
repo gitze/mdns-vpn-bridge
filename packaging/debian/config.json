@@ -1,0 +1,14 @@
+{
+  "lan_if": "REPLACE_WITH_LAN_IFACE",
+  "lan_ip": "",
+  "peer": "REPLACE_WITH_PEER_OVERLAY_IP",
+  "peer_port": 53530,
+  "link_bind": "",
+  "lan2peer": "query",
+  "peer2lan": "all",
+  "services": [],
+  "dedupe": "2s",
+  "verbose": false,
+  "stats": "300s",
+  "status_addr": "127.0.0.1:53531"
+}

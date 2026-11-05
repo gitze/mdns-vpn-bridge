@@ -28,4 +28,11 @@ clean:
 check:
 	sh tests/init_test.sh
 
-.PHONY: all install clean check
+# Release packaging (self-contained, no SDK needed): IPK + GUI bundle in DIST.
+VERSION ?= 0.3.0
+COMMIT ?=
+DIST ?= ../../dist
+release:
+	VERSION=$(VERSION) COMMIT=$(COMMIT) DIST=$(abspath $(DIST)) sh release.sh
+
+.PHONY: all install clean check release

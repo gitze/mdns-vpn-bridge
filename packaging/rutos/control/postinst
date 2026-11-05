@@ -1,0 +1,26 @@
+#!/bin/sh
+# mdns-vpn-bridge postinst.
+#
+# Runs the native RutOS/OpenWrt lifecycle via default_postinst
+# (/lib/functions.sh). Per that function this DOES act on the service:
+#   - fresh install (PKG_UPGRADE != 1): enables the package init script and
+#     starts it;
+#   - upgrade (PKG_UPGRADE = 1): starts it (it was stopped by default_prerm).
+# It also loads OS-user ubus ACLs, applies etc/permtab.d and etc/uci-defaults
+# and restores /etc/config permissions. It never overwrites an existing UCI
+# config.
+#
+# Configuration is preserved across upgrades by the `conffiles` declaration,
+# not by any custom backup: opkg keeps a user-edited
+# /etc/config/mdns-vpn-bridge and writes the new default as
+# /etc/config/mdns-vpn-bridge-opkg (verified with the router's opkg 0.6.3).
+
+IPKG_INSTROOT=${IPKG_INSTROOT:-$D}
+if [ -s "$IPKG_INSTROOT/lib/functions.sh" ]; then
+	. "$IPKG_INSTROOT/lib/functions.sh"
+	[ -n "$IPKG_INSTROOT" ] && set -x || set +e
+fi
+if command -v default_postinst >/dev/null 2>&1; then
+	default_postinst $0 $@
+fi
+exit 0

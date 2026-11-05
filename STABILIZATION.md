@@ -1,7 +1,8 @@
 # Relay stabilization
 
 - Scope: current working tree; original review: [FINDINGS.md](FINDINGS.md).
-- State: implementation and integration verification completed; no release or production installation.
+- State: implementation and integration verification completed; release 0.3.0
+  artifacts built (not installed; no production router touched).
 - Historical UI extraction/deletions must remain separate from stabilization commits.
 
 ## Findings disposition
@@ -59,9 +60,70 @@
 - Parent systemd unit syntax validation: PASS using scratch executable-path substitution, no production unit installed.
 - Final reviews: standards/concurrency and spec axes; corrected shutdown-flush ordering, Run-level negative TTL validation, missing index-change coverage and overgeneralized flap claims. Original review text retained in FINDINGS.md.
 
+## Release artifacts and provenance
+
+- `packaging/rutos/release.sh` writes only under `dist/` (RutOS IPK, RutOS GUI
+  bundle, Debian/amd64 tarball, `sha256sums.txt`); it does not install, start or
+  restart anything and never touches a router.
+- The relay binaries embed `0.3.0 (ac38fa0)`: `ac38fa0` is the committed base
+  revision and the artifacts were cut from that base plus the release/packaging
+  glue in the working tree (not yet committed). `mdns-vpn-bridge version`/`help`
+  prints the base commit, not a commit of the uncommitted glue.
+- Configuration is preserved solely by the package's `conffiles` declaration;
+  the earlier `preinst`/`postrm` `/tmp` backup guard was removed as redundant
+  and risky (it could restore a stale config). The native `default_postinst`
+  lifecycle starts the service and enables it on a fresh install.
+
+## Linux file-based deployment (config file + systemd)
+
+- The Linux systemd unit is now file-based: `ExecStart` passes only
+  `-config /etc/mdns-vpn-bridge/config.json` (no per-setting flags), with an
+  `RestartPreventExitStatus=2` to stop retrying invalid configuration. The relay
+  validates before opening sockets; no redundant ExecStartPre. Hardening is unchanged (`DynamicUser=yes`,
+  `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`,
+  `RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK`, empty
+  `CapabilityBoundingSet=`); the config is `root:root` mode `0644` and holds no
+  secrets, so the transient user can read it.
+- JSON schema, keys map to CLI flags: `lan_if`, `lan_ip`, `peer`,
+  `peer_port`, `link_bind`, `lan2peer`, `peer2lan`, `services` (array),
+  `dedupe` (duration string), `verbose`, `stats` (duration string),
+  `status_addr`. Every key optional; omitted = built-in default.
+- Contract documented in [docs/configuration.md](docs/configuration.md): an
+  explicit `-config` file that is missing/unreadable/invalid fails the start
+  (no silent fallback); unknown keys are rejected; CLI flags override file
+  values; omitted keys default; the file is read once — **no hot reload**, a
+  change needs a restart; `check -config` is pure validation (no interface-exist
+  or reachability check).
+- The Debian/amd64 tarball now ships a sample `config.json` (placeholders, not
+  real addresses) beside the binary and unit; the install README documents
+  install → `check -config` → atomic save (`mv` within `/etc/mdns-vpn-bridge`) →
+  restart, with no reload step.
+- RutOS is untouched: the procd init script still translates UCI options into
+  CLI flags, the relay has no UCI dependency and there is no second RutOS
+  config file. Production RutOS/UI artifacts are unchanged.
+- Verification (this change): `python3 packaging/debian/tests/packaging_test.py`
+  (`make -C packaging/debian check`) builds the tarball with a **mock** binary
+  and asserts the sample config and unit are inside with the right modes and
+  content — no package install, no system files, no network. A real
+  `build_tarball.py` run over `build/linux-amd64` produced a tarball containing
+  `config.json`, the unit, binary, README and LICENSE. The `-config`/`check`
+  flags themselves are implemented in the CLI/config core (separate change);
+  this change covers packaging and docs only.
+
+## Final configuration integration acceptance
+
+- Shared Normalize/Validate used by CLI, JSON/check and Run. No new Go dependencies.
+- Strict loader: canonical unique keys, no nulls, no trailing JSON, type checks, maximum 1 MiB. Explicit flags override file values including false/zero/empty.
+- Final parent-run snapshot: `/path/to/test-evidence/` on the build host.
+- Formatting, build, vet and `go test -race -count=3 ./...`: PASS. RutOS sh/BusyBox init tests and Debian packaging tests: PASS.
+- Complete isolated release pipeline with version 0.4.0: PASS, six architecture builds and both RutOS/Debian archives produced. Test build provenance label `config-acceptance`, not a published release.
+- Real daemon test in isolated network namespace: startup reads JSON; subsequent file edit does not alter running status; after restart the changed filter appears. PASS; namespace cleaned up.
+- Reviews addressed: strict JSON edge cases, whitespace-only service entries, packaged configuration reference, safe candidate-file instructions, migration warning, invalid-config restart prevention and rejection of stale-binary SKIP_BUILD.
+- Existing production 0.3.0 services were not touched by this configuration work. Cockpit, hot reload, peer discovery and target-system migration are not implemented.
+
 ## Remaining boundaries
 
-- No live router or peer relay upgrade/restart; installed production versions unchanged.
+- This configuration change is not deployed: both production relays remain at the previously verified 0.3.0 installation.
 - No end-to-end discovery/MTU/link-flap or two-interface isolation test of this new tree.
 - UI 0.3.0 is a separate project/release; it does not expose optional `linkbind` and does not display the new top-level dedupe counter.
 - User requested implementation with commits; include all new tests and keep historical UI extraction in a separate commit.

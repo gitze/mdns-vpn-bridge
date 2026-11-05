@@ -1,6 +1,7 @@
 [Unit]
 Description=mDNS VPN bridge — mDNS/Bonjour relay between two LANs over a unicast overlay
 Documentation=https://github.com/gitze/mdns-vpn-bridge
+Documentation=file:/usr/share/doc/mdns-vpn-bridge/configuration.md
 After=network-online.target
 Wants=network-online.target
 # If the overlay runs as its own service (e.g. tailscaled), add it here so the
@@ -9,16 +10,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Replace the interface and peer address with your own values.
-# lan2peer=query keeps the announcements of this (chatty) side off the link;
-# see README "Filter".
-ExecStart=/usr/local/bin/mdns-vpn-bridge \
-    -lan REPLACE_WITH_LAN_IFACE \
-    -peer REPLACE_WITH_PEER_OVERLAY_IP \
-    -lan2peer query \
-    -peer2lan all \
-    -stats 300s
+# Configuration lives in a single JSON file (see docs/configuration.md). The
+# file is read once at startup; there is no hot reload, so a change needs
+# `systemctl restart mdns-vpn-bridge`. Install it as root:root mode 0644 (it
+# holds no secrets), which is what DynamicUser/ProtectSystem below can read.
+#
+# ExecStart takes ONLY -config: no per-setting flags, so the file is the single
+# source of truth. (CLI flags would override the file; keeping ExecStart bare
+# avoids drift.) The relay validates before binding sockets; exit 2 means
+# invalid configuration/arguments and must not cause an endless restart loop.
+ExecStart=/usr/local/bin/mdns-vpn-bridge -config /etc/mdns-vpn-bridge/config.json
 Restart=always
+RestartPreventExitStatus=2
 RestartSec=5
 
 # Hardening. The mDNS port (5353) and the status port are both above 1024, so

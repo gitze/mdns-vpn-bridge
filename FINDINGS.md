@@ -400,3 +400,86 @@ Begründung für R2 vor R1: R2 ist klein, unabhängig und entschärft die Auswir
 - Für R2 und R4–R9 keine weitere Grundsatzklärung nötig.
 - R1: isolierter Netzversuch, danach begründete Entscheidung zwischen Polling und Ereigniswächter.
 - R3: bewusste Entscheidung zwischen dokumentierter Einschränkung und zusätzlichem Service-Zielcache.
+
+---
+
+# Statusupdate nach Umsetzung und Produktivupgrade — 2026-11-05
+
+## Gesamturteil
+
+- **Nicht alle Themen sind uneingeschränkt geschlossen.** Die vereinbarten Codekorrekturen sind umgesetzt, getestet und als Relay 0.3.0 auf beiden Seiten aktiv.
+- Bewusst akzeptierte Grenzen sind keine implementierten Features: kein Service-Zielcache, kein IPv6-Transport, keine Peer-Authentifizierung im Relay, procd weiterhin Root.
+- Zusätzliche Integrationsnachweise sowie die Versionierung der später hinzugefügten Release-Paketierung bleiben offen.
+- Dieses Update ersetzt die früheren Zeitstandsangaben „keine Umsetzung“, „nicht installiert“ und „R3 noch ohne Entscheidung“; ursprüngliche Befunde/Antworten bleiben als historische Belege erhalten.
+
+## Ursprüngliche Findings 1–12
+
+| Finding | Aktueller Abschluss | Beleg / verbleibende Grenze |
+|---|---|---|
+| 1 Empfangspuffer | Behoben | Eigene Puffer; echte gleichzeitige UDP-Zuspielung unter Race-Detector getestet. |
+| 2 Multicast-Isolation | Codefix abgeschlossen; Integrationsnachweis offen | `IP_MULTICAST_ALL=0`, native Socket-Option geprüft. Kein separater Zwei-Interface-Isolationstest; kein SO_BINDTODEVICE. |
+| 3 Tote Reader / Netzänderungen | Vereinbarter Fix abgeschlossen | Fehlerweitergabe, sauberes Shutdown, LAN-Wächter 15 s; Adress-/Overrideverlust, Interface down und geänderter Index getestet. Kurze Flaps zwischen Prüfungen können unerkannt bleiben. |
+| 4 Link-Binding / Vertrauen | Vereinbarte Maßnahme abgeschlossen | Optionales `linkbind`; keine kryptografische Peer-Authentifizierung, Firewall/Overlay bleiben Vertrauensgrenze. Default-Binding unverändert. |
+| 5 Servicefilter | Behoben mit akzeptiertem Funktionsumfang | DNS-Labelvergleich, ASCII-Faltung, Kompressions-/RDATA-Grenzen, Enumeration; packet-level, kein Service-Zielcache, nur bisheriger Filterpfad. |
+| 6 Paketmindestlänge | Behoben | Zwölf Bytes Mindestlänge in beiden Richtungen und im Unicastpfad; Eigenverkehr-Ausschluss dokumentiert. Keine vollständige DNS-Prüfung ohne Allowlist zugesagt. |
+| 7 Dedupe | Behoben mit dokumentiertem Trade-off | Obergrenze 8192, FIFO-Ablauf, Zeitstempel unter Sperre, Filter vor Dedupe, additiver Zähler. Identische legitime Wiederholungen innerhalb TTL können weiter unterdrückt werden. |
+| 8 Init-Argumente | Behoben | Gequotete Einzelargumente; isolierte Shell-/BusyBox-Tests. |
+| 9 Privilegien | systemd abgeschlossen; RutOS-Grenze akzeptiert | `home-gw` live mit DynamicUser/Hardening; procd auf RutOS weiter Root, dokumentiert. |
+| 10 Override-Netzmaske | Behoben | Irreführender Netzmasken-Log entfernt. |
+| 11 IPv4-Auswahl | Behoben | Nicht-Link-Local bevorzugt, Mehrdeutigkeit über konfigurierten Logger gemeldet. |
+| 12 Weitere Punkte | Vereinbarte Code-/CI-Korrekturen abgeschlossen; Netzabnahme offen | Status-Bindefehler fatal, CLI-Argumente geprüft, CI/Checksummen/Integrationstests vorhanden. IPv4-/MTU-Grenzen dokumentiert; kein pauschales 1400-Byte-Droplimit. |
+
+## Re-Review R1–R9
+
+| Punkt | Status |
+|---|---|
+| R1 Wächter | Implementiert und getestet. Isolierter veth-/Namespace-Versuch beobachtete Erholung bei kurzem Down/Up mit gleicher IP auf dem Testkernel; keine allgemeine Zusage für Zielrouter. Siehe `docs/network-flap-experiment.md`. |
+| R2 Log-Flood | Behoben: threadsicherer Limiter pro Richtung, Standard 10 s; `errors` oben im JSON; finale Zusammenfassung erst nach Join der Reader. Deterministischer Test für verspäteten Schreibfehler vorhanden. |
+| R3 Hostnamen bei Allowlist | **Bewusst als dokumentierte Einschränkung abgeschlossen**, nach bestätigtem Umfang: kein Cache. Allgemeine Hostnamenauflösung bei gesetzter Allowlist nicht garantiert. Eine spätere Cache-Implementierung wäre neue Funktionsarbeit. |
+| R4 ASCII statt Unicode | Behoben; Großschreibung, Kelvin-Zeichen und ungültige UTF-8-Bytes getestet. |
+| R5 Validierung / Texte | Behoben; negative Dedupe-Dauer in CLI und Run abgelehnt, Null = Default 2 s dokumentiert, CLI-Zähler und UCI-Kommentar korrigiert, Auswahlwarnung über cfg.Logf. |
+| R6 Link-Bind-Retry | Behoben; ausschließlich EADDRNOTAVAIL, begrenzt und Context-abbrechbar. |
+| R7 Reader / Statusargumente | Behoben; Backoff 2 ms und Grenze 100 aufeinanderfolgender transienter Lesefehler, Erfolg setzt Folge zurück; Status-Positionsargumente abgelehnt. |
+| R8 Testlücken | **Teilweise abgeschlossen**: Race-/Cross-Build-/Fuzz-/ARM-QEMU-Läufe und sichtbare CI-Skips vorhanden. Weiter unten genannte reale Integrationsnachweise bleiben offen. |
+| R9 Arbeitsbaum | Stabilisierung samt neuen Tests committed, historische UI-Auslagerung getrennt; `.DS_Store` ignoriert. **Spätere Release-Buildskripte/-Hooks und zugehörige Änderungen sind noch uncommitted** (siehe Git-Stand unten). |
+
+## Verifikation und Git-Stand
+
+- Stabilisierung: `ac38fa0`; getrennte historische UI-Auslagerung: `4553d48`, Branch `main`; nicht gepusht.
+- Gemeinsame Abnahme: `gofmt` leer, `go build`, `go vet`, `go test -race -count=3 ./...` bestanden.
+- Linux-Builds: amd64, arm64, ARMv6, ARMv7, MIPS hardfloat und MIPS little-endian bestanden.
+- ARMv6-Testbinaries unter QEMU bestanden; Multicast-Optionstest dort wegen Emulationsunterstützung übersprungen, native Prüfung separat bestanden.
+- Finaler Integrations-Fuzzlauf: 107103 Ausführungen ohne Fehler; Shell-/BusyBox-Init-Tests bestanden.
+- Release-Paketierung nach Stabilisierung hinzugefügt: Builder, Control-Hooks, Debian-Archiv, Versions-/Provenance-Anzeige und Release-Dokumentation. Diese Dateien sind noch nicht in einem neuen Commit gesichert; Arbeitsbaum aktuell nicht sauber.
+- Konfigurationserhalt: isoliertes Upgrade von altem 0.2.0-Paket ohne Conffiles auf neues 0.3.0 mit Conffiles unter gleicher opkg-Version getestet; produktive Routerkonfiguration nach User-Upgrade erhalten.
+
+## Produktivstand
+
+- RUTX50: User installierte Relay 0.3.0 und startete ihn anschließend manuell neu; laufendes `/proc/<pid>/exe version` = 0.3.0, Status und Paketfluss geprüft.
+- `home-gw`: nach ausdrücklicher Freigabe Binary auf 0.3.0 aktualisiert, vorhandene Unit/Peer-/Filterargumente erhalten, Hardening-Drop-in ergänzt und Relay neu gestartet; laufende Version 0.3.0 bestätigt.
+- `home-gw` läuft mit DynamicUser/NoNewPrivileges; keine automatischen Neustarts beim Kontrollabruf. Beide Seiten lieferten Paketfluss und `errors=0`.
+- Keine Änderung an Tailscale, Routing, Firewall oder produktiven Netzinterfaces; kein Router-/Host-Reboot.
+- RutOS-UI bleibt eigenständiges Paket `mdns-vpn-bridge-rutos-ui` 0.3.0; identische Versionsnummer ist kein doppelter Relay.
+
+## Noch offen / nicht durch dieses Update geschlossen
+
+1. **Zwei-Interface-Isolationstest:** Nachweis, dass Verkehr aus einem anderen Netzsegment nicht weitergeleitet wird.
+2. **Vollständige Discovery-/Dienstzugriffsabnahme mit 0.3.0 auf beiden Seiten:** steigende Zähler beweisen nicht jede Namensauflösung und jeden Dienst.
+3. **MTU/Fragmentierung und Zielrouter-Link-Flap/Reboot:** isolierter Linux-Versuch ersetzt diese Zielsystemtests nicht. Produktive Unterbrechungen separat freigeben lassen.
+4. **Release-Paketierung committen:** neue Builder/Hooks/Provenance-Änderungen und Dokumentation getrennt nachvollziehbar versionieren.
+5. **Upgrade-Lifecycle auf RutOS klären:** Beim tatsächlichen Upgrade blieb der alte 0.2.0-Prozess zunächst aktiv; erst manueller Restart aktivierte 0.3.0. Neustartpflicht dokumentieren beziehungsweise automatischen Paketlifecycle gesondert reproduzieren und korrigieren. Die Annahme „Installation startet garantiert das neue Binary“ ist durch diesen Livebefund widerlegt.
+6. **Paket-Anzeigenamen unterscheiden:** WebUI-Build 0.3.1 benennt `tlt_name` in IPK-Control, Bundle und Feed konsistent in „mDNS VPN Bridge WebUI“ um; Relay bleibt „mDNS VPN Bridge“. Technische Paketnamen bleiben unverändert, UI-Abhängigkeit auf Relay erhalten; Paketierungs-Regressionsprüfung und Build bestanden. Noch nicht auf dem Router installiert: Dort bleibt die alte Beschriftung bis zum UI-Upgrade sichtbar.
+
+- Automatische Peer-Suche / DNS-Peer / Hello-Heartbeat wurden nur besprochen; nicht implementiert und kein Bestandteil der bisherigen Findings-Abnahme.
+- Kein weiterer Implementierungs-, Commit- oder Deployment-Auftrag entsteht allein durch diese Statusliste.
+
+## Nachtrag: gemeinsame Konfiguration, nächster Stand 0.4.0
+
+- Separater anschließender Implementierungsauftrag: gemeinsame Normalize/Validate-Prüfung für CLI, Linux-JSON und Run; RutOS behält UCI/procd als einzige Konfigurationsquelle.
+- Neu: `-config /etc/mdns-vpn-bridge/config.json`, `check -config …` ohne Socket-/Interfacezugriffe; explizite CLI-Werte übersteuern Dateifelder, sonst Datei vor Defaults.
+- Keine Hot-Reload-Funktion, keine Schreib-API im Relay und keine Cockpit-Erweiterung. Datei wird beim Start gelesen; Änderungen benötigen Restart.
+- Strikte Dateiprüfung: eindeutige kanonische Schlüssel, Typen, keine Nullwerte, maximal 1 MiB, keine angehängten JSON-Werte. Gemeinsame semantische Prüfung vor Dienststart.
+- systemd-Vorlage verwendet nur `-config`; Konfigurationsfehler (Exit 2) werden nicht endlos neu gestartet. Bestehende CLI-only Units funktionieren weiter; Migration und Kandidatdatei-Prüfung dokumentiert.
+- Finale gemeinsame Prüfung: Formatierung, Build, Vet und Race-Suite dreimal bestanden; sechs Zielarchitekturen gebaut, RutOS-Init-/Debian-Paketierungstests bestanden. Isolierter echter Daemon las Datei beim Start, ignorierte spätere Änderung und übernahm sie erst nach Restart.
+- Paketierungs-/Konfigurationsdokumentation und neue Tests werden mit diesem ausdrücklich beauftragten Implementierungsstand versioniert; ältere Angaben zum unversionierten Release-Glue sind damit historisch.
+- Kein Produktivupgrade durch diesen Auftrag: installierte Relays bleiben auf 0.3.0. Netzabnahme und RutOS-Upgrade-Neustartproblem bleiben separat offen.

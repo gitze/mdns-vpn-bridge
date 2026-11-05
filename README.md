@@ -61,35 +61,74 @@ go build ./cmd/mdns-vpn-bridge
 
 ### systemd (Debian/Ubuntu/…)
 
+On Linux the relay is configured from a single JSON file rather than a long
+`ExecStart` flag list:
+
 ```ini
 [Service]
-ExecStart=/usr/local/bin/mdns-vpn-bridge -lan ens18 -peer 198.51.100.2 \
-    -lan2peer query -peer2lan all -stats 300s
+ExecStartPre=/usr/local/bin/mdns-vpn-bridge check -config /etc/mdns-vpn-bridge/config.json
+ExecStart=/usr/local/bin/mdns-vpn-bridge -config /etc/mdns-vpn-bridge/config.json
 Restart=always
 ```
 
 A ready-made unit with placeholders is in
-[`packaging/systemd/`](packaging/systemd/mdns-vpn-bridge.service). It runs the
-relay as a transient unprivileged user (`DynamicUser=yes`) with a minimal
-sandbox — the mDNS and status ports are both above 1024, so no privileges are
-needed.
+[`packaging/systemd/`](packaging/systemd/mdns-vpn-bridge.service), and the
+Debian tarball ships a sample `config.json`. The unit runs the relay as a
+transient unprivileged user (`DynamicUser=yes`) with a minimal sandbox — the
+mDNS and status ports are both above 1024, so no privileges are needed, and the
+config file is world-readable (`0644`, no secrets).
+
+The file is read once at startup: there is **no hot reload**, so a change needs
+`systemctl restart mdns-vpn-bridge`. An explicit `-config` file that is missing
+or invalid fails the start; unknown keys are rejected; CLI flags override file
+values; omitted keys keep their defaults; `check -config` validates the file
+offline (it does not check that the interface exists). The full schema and the
+edit-validate-restart procedure are in
+[docs/configuration.md](docs/configuration.md).
 
 ### Teltonika RutOS / OpenWrt
 
 [`packaging/rutos/`](packaging/rutos/README.md) builds the relay package:
 `mdns-vpn-bridge` contains the binary, procd init script and UCI defaults.
 
+Build the release artifacts without the SDK (self-contained, deterministic):
+
+```sh
+VERSION=0.3.0 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
+# dist/mdns-vpn-bridge_0.3.0_cortexa7hf-neon-vfpv4.ipk        (opkg install)
+# dist/mdns-vpn-bridge_0.3.0_RUTX_00.07.25.3.tar.gz          (GUI upload)
+# dist/mdns-vpn-bridge_0.3.0_linux-amd64.tar.gz              (Debian binary+unit)
+# dist/sha256sums.txt
+```
+
+`release.sh` and the builders only write files under `dist/`: they do not
+install, start or restart anything and never touch a router. The embedded
+provenance reads e.g. `0.3.0 (ac38fa0)` — the committed base revision plus the
+release/packaging glue in the working tree (see `STABILIZATION.md`).
+
+The `*.tar.gz` bundle (`main` + IPK + `Packages.gz`) is what the RutOS WebUI
+upload expects; a raw IPK upload is rejected. Alternatively build inside the SDK
+(`cp -r packaging/rutos apps/mdns-vpn-bridge`, `cp build/linux-armv7
+apps/mdns-vpn-bridge/files/bin/mdns-vpn-bridge`, configure via
+`build.conf.snippet`, `puf apps build mdns-vpn-bridge`).
+
+The package declares `/etc/config/mdns-vpn-bridge` as a `conffile`, so opkg
+keeps a user-edited configuration across upgrades (that is the only preservation
+mechanism — there is no custom backup). The native `postinst` lifecycle starts
+the service and enables it on a fresh install; an upgrade is stop → install →
+start, leaving the service enabled.
+
+The `mdns-vpn-bridge_<ver>_linux-amd64.tar.gz` tarball is the Debian/amd64
+deliverable: the static binary, the hardened file-based systemd unit above, a
+sample `config.json` and an install README. It ships no auto-installer; the
+README lists the manual `install`, validate (`check -config`), atomic-save and
+`systemctl` steps.
+
 The optional **mdns-vpn-bridge-rutos-ui** is a separate project, with its own
 Vue UI, Lua adapter, build and tests. It depends on the relay package; it is
 not part of this source tree. The relay does not require the UI.
 
 ```sh
-# inside the RutOS SDK, build the relay itself
-cp -r /path/to/mdns-vpn-bridge/packaging/rutos apps/mdns-vpn-bridge
-cp build/linux-armv7 apps/mdns-vpn-bridge/files/bin/mdns-vpn-bridge
-# configure the main app as described in packaging/rutos/build.conf.snippet
-puf apps build mdns-vpn-bridge
-
 # on the router, install the main package (or use the existing installation)
 opkg install mdns-vpn-bridge_*.ipk
 uci set mdns-vpn-bridge.main.peer=198.51.100.1
@@ -117,10 +156,22 @@ over Tailscale (5G uplink):
 
 ## Stabilization status
 
-- Current uncommitted corrections and verification: [STABILIZATION.md](STABILIZATION.md).
-- These relay changes are not yet released or installed; the separate RutOS UI 0.3.0 release does not upgrade the relay binary.
+- Current corrections and verification: [STABILIZATION.md](STABILIZATION.md).
+- Release 0.3.0 relay artifacts are built (`dist/`, git-ignored) from the
+  stabilized tree; they are not installed and no router was touched. The
+  separate RutOS UI 0.3.0 release depends on the relay but does not replace its
+  binary.
+
+## Configuration-file support (next release 0.4.0)
+
+- Shared validation for CLI, JSON file and Run; `check` validates without sockets. Linux reads JSON once at startup; RutOS remains UCI/procd with the same CLI. No hot reload or Cockpit extension.
+- Existing production 0.3.0 deployments are unchanged. Do not install the new file-based unit with an old binary. See [configuration and migration](docs/configuration.md).
 
 ## Configuration
+
+Flags are the primitive interface. On Linux the same settings can be given in a
+JSON file passed with `-config` (schema, overrides, defaults and the
+restart-only behaviour: [docs/configuration.md](docs/configuration.md)).
 
 | Flag | Default | Meaning |
 |---|---|---|
