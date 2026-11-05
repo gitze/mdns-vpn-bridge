@@ -30,9 +30,9 @@ unicast. That is the gap this tool fills:
 ## Topology
 
 ```
-   Site A (home)                          Site B (remote/garden)
+   Site A (home)                          Site B (remote)
 ┌─────────────────────┐              ┌──────────────────────┐
-│ LAN 192.0.2.0/24   │              │ LAN 198.51.100.0/24   │
+│ LAN 192.168.10.0/24   │              │ LAN 192.168.20.0/24   │
 │   │        ▲        │              │   ▲         │        │
 │   │ mDNS   │ mDNS   │   unicast    │   │ mDNS    │ mDNS   │
 │   ▼        │        │   overlay    │   │         ▼        │
@@ -94,17 +94,17 @@ edit-validate-restart procedure are in
 Build the release artifacts without the SDK (self-contained, deterministic):
 
 ```sh
-VERSION=0.3.0 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
-# dist/mdns-vpn-bridge_0.3.0_cortexa7hf-neon-vfpv4.ipk        (opkg install)
-# dist/mdns-vpn-bridge_0.3.0_RUTX_00.07.25.3.tar.gz          (GUI upload)
-# dist/mdns-vpn-bridge_0.3.0_linux-amd64.tar.gz              (Debian binary+unit)
+VERSION=0.4.1 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
+# dist/mdns-vpn-bridge_0.4.1_cortexa7hf-neon-vfpv4.ipk        (opkg install)
+# dist/mdns-vpn-bridge_0.4.1_RUTX_00.07.25.3.tar.gz          (GUI upload)
+# dist/mdns-vpn-bridge_0.4.1_linux-amd64.tar.gz              (Debian binary+unit)
 # dist/sha256sums.txt
 ```
 
 `release.sh` and the builders only write files under `dist/`: they do not
 install, start or restart anything and never touch a router. The embedded
-provenance reads e.g. `0.3.0 (ac38fa0)` — the committed base revision plus the
-release/packaging glue in the working tree (see `STABILIZATION.md`).
+provenance reads e.g. `0.4.1 (<short-commit>)` — the committed base revision
+plus the release/packaging glue in the working tree (see `STABILIZATION.md`).
 
 The `*.tar.gz` bundle (`main` + IPK + `Packages.gz`) is what the RutOS WebUI
 upload expects; a raw IPK upload is rejected. Alternatively build inside the SDK
@@ -126,12 +126,14 @@ README lists the manual `install`, validate (`check -config`), atomic-save and
 
 The optional **mdns-vpn-bridge-rutos-ui** is a separate project, with its own
 Vue UI, Lua adapter, build and tests. It depends on the relay package; it is
-not part of this source tree. The relay does not require the UI.
+not part of this source tree. The relay does not require the UI. That project
+produces the combined RutOS upload bundle (relay IPK + UI IPK); this repository
+builds the relay artifacts alone.
 
 ```sh
 # on the router, install the main package (or use the existing installation)
 opkg install mdns-vpn-bridge_*.ipk
-uci set mdns-vpn-bridge.main.peer=198.51.100.1
+uci set mdns-vpn-bridge.main.peer=100.64.0.10
 uci commit mdns-vpn-bridge
 /etc/init.d/mdns-vpn-bridge enable && /etc/init.d/mdns-vpn-bridge start
 ```
@@ -142,30 +144,33 @@ The relay itself is administered using `mdns-vpn-bridge status`, UCI and procd.
 
 ## Verified deployment
 
-Running on a Teltonika RUTX50 in a garden site, bridged to a Debian VM at home
-over Tailscale (5G uplink):
+Verified across two sites — a RutOS router at a remote site bridged to a Debian
+VM at the home site over an encrypted unicast overlay (Tailscale/WireGuard):
 
-- `webui.local` → `198.51.100.152`, `sensor.local` → the ESPHome node,
-  `http://webui.local/` answers 302 — resolved from the other site's LAN
-- counters after the migration: ~350 packets / 150 kB per 3 minutes in the
-  garden→home direction, 28 packets / 3 kB home→garden (no filter on the
-  garden side, which is the intended asymmetry)
-- package installs via `opkg`, starts through procd (`S95`), survives reboot
-- the same version runs as `mdns-vpn-bridge.service` (systemd) on the Debian
-  side; both instances report `mdns-vpn-bridge status` with `v0.2.0`
+- a web-GUI device (`webui.local` → `192.168.20.11`) and an ESPHome node
+  (`sensor.local` → `192.168.20.12`) resolve from the other site's LAN;
+  `http://webui.local/` answers 302
+- with `-lan2peer query` on the chatty side the link stays asymmetric (queries
+  cross, that side's own announcements stay home), which is the intended shape
+- the package installs via `opkg`, starts through procd (`S95`) and survives a
+  reboot
+- the same relay version runs as `mdns-vpn-bridge.service` (systemd) on the
+  Debian side; both instances report `mdns-vpn-bridge status`
 
-## Stabilization status
+## Status
 
-- Current corrections and verification: [STABILIZATION.md](STABILIZATION.md).
-- Release 0.3.0 relay artifacts are built (`dist/`, git-ignored) from the
-  stabilized tree; they are not installed and no router was touched. The
-  separate RutOS UI 0.3.0 release depends on the relay but does not replace its
-  binary.
+- Corrections and verification: [STABILIZATION.md](STABILIZATION.md); the full
+  review trail is in [FINDINGS.md](FINDINGS.md).
+- Relay: the router runs 0.4.1, the Linux side 0.4.0 (same core code). Release
+  artifacts are built into `dist/` (git-ignored) and install nothing by
+  themselves.
+- The optional RutOS WebUI is a separate project/release; it depends on the
+  relay but does not replace its binary.
 
-## Configuration-file support (next release 0.4.0)
+## Configuration-file support
 
 - Shared validation for CLI, JSON file and Run; `check` validates without sockets. Linux reads JSON once at startup; RutOS remains UCI/procd with the same CLI. No hot reload or Cockpit extension.
-- Existing production 0.3.0 deployments are unchanged. Do not install the new file-based unit with an old binary. See [configuration and migration](docs/configuration.md).
+- Do not install the new file-based unit with an old (pre-0.4.0) binary. See [configuration and migration](docs/configuration.md).
 
 ## Configuration
 
@@ -195,9 +200,9 @@ the same values are available on the command line:
 
 ```console
 $ mdns-vpn-bridge status
-mdns-vpn-bridge v0.2.0
-  lan        ens18 (192.0.2.5)
-  peer       198.51.100.2:53530
+mdns-vpn-bridge v0.4.1
+  lan        ens18 (192.168.10.10)
+  peer       100.64.0.10:53530
   filter     lan2peer=query peer2lan=all
   services   -
   uptime     3d04h
@@ -249,8 +254,8 @@ name cache**: the relay does not remember earlier service records to re-admit
 such packets. Either add the relevant service type to `-services`, or leave the
 allowlist empty if general `.local` resolution must work across the link.
 
-Measured on a real setup (home ↔ garden over 5G): with `query` on the home
-side, home → garden traffic is ~43 kB/min; without any filter ~107 kB/min
+Measured on a real two-site setup (home ↔ remote): with `query` on the home
+side, home → remote traffic is ~43 kB/min; without any filter ~107 kB/min
 (~154 MB/day). Use `-services _http,_esphomelib,_ipp,_airplay` to narrow it
 further.
 

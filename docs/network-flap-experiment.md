@@ -24,6 +24,6 @@
 
 ## Evidence provenance
 
-- Implementation-stage probe and output: build-host scratch `/path/to/test-evidence/`.
-- Detailed implementation-stage record: Hermes scratch `R1_FLAP_EXPERIMENT.md`.
+- Implementation-stage probe and output: build-host scratch `<build-host-scratch-dir>/`.
+- A detailed implementation-stage record was kept locally during the experiment.
 - The throwaway probe is not part of this repository; these observations are a bounded experiment record, not a reproducible automated CI fixture.

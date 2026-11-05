@@ -1,8 +1,9 @@
 # Relay stabilization
 
 - Scope: current working tree; original review: [FINDINGS.md](FINDINGS.md).
-- State: implementation and integration verification completed; release 0.3.0
-  artifacts built (not installed; no production router touched).
+- State: implementation and integration verification completed. Relay deployed
+  and live-accepted on both sites (router 0.4.1, Linux 0.4.0, same core code);
+  release artifacts are built under `dist/` and install nothing by themselves.
 - Historical UI extraction/deletions must remain separate from stabilization commits.
 
 ## Findings disposition
@@ -25,7 +26,7 @@
 ## Verification
 
 - Host: dedicated Debian build host; Go 1.23.3, Linux amd64.
-- Final isolated copy: `/path/to/test-evidence/` on build host.
+- Final isolated copy: `<build-host-scratch-dir>` on build host.
 - `gofmt -l internal cmd`: empty.
 - `go vet ./...`: PASS.
 - `go test -race -count=5 ./...`: PASS, both packages.
@@ -51,7 +52,7 @@
 | R8 | CI exposes skips; optional ARM-QEMU job; native and emulated results distinguished. |
 | R9 | `.DS_Store` ignored; tests included in stabilization commit, historical UI removal separated. |
 
-- Final integration copy: build-host `/path/to/test-evidence/`; Go 1.23.3.
+- Final integration copy: build-host `<build-host-scratch-dir>`; Go 1.23.3.
 - Parent executed `gofmt` check, `go build ./...`, `go vet ./...`, `go test -race -count=3 ./...`: PASS.
 - Parent executed init-script tests under sh and BusyBox: PASS.
 - Parent cross-builds: amd64, arm64, ARMv6, ARMv7, MIPS hardfloat, MIPS little-endian: PASS.
@@ -65,10 +66,10 @@
 - `packaging/rutos/release.sh` writes only under `dist/` (RutOS IPK, RutOS GUI
   bundle, Debian/amd64 tarball, `sha256sums.txt`); it does not install, start or
   restart anything and never touches a router.
-- The relay binaries embed `0.3.0 (ac38fa0)`: `ac38fa0` is the committed base
-  revision and the artifacts were cut from that base plus the release/packaging
-  glue in the working tree (not yet committed). `mdns-vpn-bridge version`/`help`
-  prints the base commit, not a commit of the uncommitted glue.
+- The relay binaries embed `<version> (<base-commit>)`: the base commit is the
+  committed revision the release was cut from, plus the release/packaging glue
+  in the working tree. `mdns-vpn-bridge version`/`help` prints the base commit,
+  not a commit of the working-tree glue.
 - Configuration is preserved solely by the package's `conffiles` declaration;
   the earlier `preinst`/`postrm` `/tmp` backup guard was removed as redundant
   and risky (it could restore a stale config). The native `default_postinst`
@@ -114,17 +115,17 @@
 
 - Shared Normalize/Validate used by CLI, JSON/check and Run. No new Go dependencies.
 - Strict loader: canonical unique keys, no nulls, no trailing JSON, type checks, maximum 1 MiB. Explicit flags override file values including false/zero/empty.
-- Final parent-run snapshot: `/path/to/test-evidence/` on the build host.
+- Final parent-run snapshot: `<build-host-scratch-dir>` on the build host.
 - Formatting, build, vet and `go test -race -count=3 ./...`: PASS. RutOS sh/BusyBox init tests and Debian packaging tests: PASS.
 - Complete isolated release pipeline with version 0.4.0: PASS, six architecture builds and both RutOS/Debian archives produced. Test build provenance label `config-acceptance`, not a published release.
 - Real daemon test in isolated network namespace: startup reads JSON; subsequent file edit does not alter running status; after restart the changed filter appears. PASS; namespace cleaned up.
 - Reviews addressed: strict JSON edge cases, whitespace-only service entries, packaged configuration reference, safe candidate-file instructions, migration warning, invalid-config restart prevention and rejection of stale-binary SKIP_BUILD.
-- Existing production 0.3.0 services were not touched by this configuration work. Cockpit, hot reload, peer discovery and target-system migration are not implemented.
+- Production services were not touched by this configuration work. Cockpit, hot reload, peer discovery and target-system migration are not implemented.
 
 ## Remaining boundaries
 
-- This configuration change is not deployed: both production relays remain at the previously verified 0.3.0 installation.
-- No end-to-end discovery/MTU/link-flap or two-interface isolation test of this new tree.
-- UI 0.3.0 is a separate project/release; it does not expose optional `linkbind` and does not display the new top-level dedupe counter.
-- User requested implementation with commits; include all new tests and keep historical UI extraction in a separate commit.
-- Review original source findings together with this disposition; original document is preserved as evidence, not silently marked fully fixed.
+- The relay is deployed and live-accepted (see FINDINGS.md); the accepted limits below are documented, not implemented.
+- End-to-end discovery, sustained router flap and managed Linux reconnect passed live; reverse-direction large-payload/full-MTU and a production address change remain open.
+- The RutOS WebUI is a separate project/release; it may not expose optional `linkbind` or the top-level dedupe counter.
+- Keep historical UI extraction in a separate commit from relay changes.
+- Review original source findings together with this disposition; the original document is preserved as evidence, not silently marked fully fixed.

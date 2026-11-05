@@ -5,10 +5,10 @@
 - Production home-gw ens18 is managed by ifupdown with DHCP/dhclient; authorized reconnect used `ifdown ens18` followed by `ifup ens18`, not raw `ip link` commands.
 - Independent systemd fallback timer armed before worker launch; worker executed in a separate transient service, independent of SSH. Fallback was cancelled after successful autonomous recovery and never triggered.
 - DHCPRELEASE and old-client termination recorded. During 25 samples the interface UP bit was zero and no IPv4/default route was printed; first sample to managed ifup measured 25.07 s.
-- DHCPDISCOVER/OFFER/REQUEST/ACK recorded; lease restored 192.0.2.5/24 and default via 192.0.2.1 automatically. No manual address/route repair.
-- Relay watchdog detected ens18 DOWN; systemd automatically restarted PID 672 as PID 1462 (NRestarts 1 -> 2). New process retried missing IPv4 four times, then started packet handling after DHCP recovery.
+- DHCPDISCOVER/OFFER/REQUEST/ACK recorded; lease restored 192.168.10.10/24 and default via 192.168.10.1 automatically. No manual address/route repair.
+- Relay watchdog detected ens18 DOWN; systemd automatically restarted the relay (restart counter incremented once, a new process). The new process retried the missing IPv4 four times, then started packet handling after DHCP recovery.
 - Tailscale peer ping succeeded after reconnect. No manual relay or VPN restart.
-- Fresh raw mDNS responses from home relay 192.0.2.5 confirmed webui.local -> 198.51.100.152 and sensor.local -> 198.51.100.176. HTTP device access 302/200.
+- Fresh raw mDNS responses from home relay 192.168.10.10 confirmed webui.local -> 192.168.20.11 and sensor.local -> 192.168.20.12. HTTP device access 302/200.
 - Post-test relay active, bidirectional counters increasing, errors=0. Transient worker exited status 0 / Result=success, fallback not triggered, test timers inactive/unloaded. No persistent unit/network configuration changes.
 
 ## Finding disposition
@@ -19,5 +19,5 @@
 
 ## Evidence
 
-- Local `/path/to/test-evidence/`: worker/restore scripts, worker.log, baseline.json, baseline-service.txt, relay-journal.log and parsed fresh DNS probe JSON files.
-- Remote `/path/to/test-evidence/`: worker/restore scripts, worker log, baseline and worker.done; absence of fallback.triggered verified.
+- Local `<evidence-dir>/linux-reconnect/`: worker/restore scripts, worker.log, baseline.json, baseline-service.txt, relay-journal.log and parsed fresh DNS probe JSON files.
+- Remote `<gateway-test-dir>/`: worker/restore scripts, worker log, baseline and worker.done; absence of fallback.triggered verified.
