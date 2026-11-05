@@ -34,7 +34,7 @@ ROOT = HERE.parent.parent  # repository root
 # Sample JSON config shipped in the tarball; the operator edits the placeholders.
 SAMPLE_CONFIG = HERE / "config.json"
 
-DEFAULT_VERSION = "0.4.0"
+DEFAULT_VERSION = "0.5.0"
 
 
 def archive(members):

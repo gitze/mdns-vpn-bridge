@@ -117,7 +117,7 @@ relay options:
 }
 
 // versionLabel returns the version with the source revision appended when a
-// build embedded one, e.g. "0.3.0 (ac38fa0)". The plain "version" subcommand
+// build embedded one, e.g. "0.5.0 (<short-commit>)". The plain "version" subcommand
 // still prints just the version number so scripts can parse it.
 func versionLabel() string {
 	if commit != "" {

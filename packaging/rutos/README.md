@@ -11,7 +11,7 @@ From the relay repository, the self-contained release builder produces the IPK
 and the GUI-uploadable bundle (no SDK required, deterministic output):
 
 ```sh
-VERSION=0.4.1 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
+VERSION=0.5.0 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
 ```
 
 Outputs under `dist/` (git-ignored):
