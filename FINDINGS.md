@@ -1,5 +1,29 @@
 # Findings: mdns-vpn-bridge (Code-Analyse)
 
+# AKTUELLER STATUS — konsolidiert 2026-11-05
+
+> Prominenter Gesamtstand. Alles unterhalb dieses Blocks sind historische Belege (Reviews, Antworten, Zwischenzeitstände) und werden nicht umgeschrieben. Frühere „offen"-Listen sind als historisch markiert; maßgeblich ist dieser Block.
+
+## Geschlossen (verifiziert)
+- **Vereinbarte Kernkorrekturen** abgeschlossen (gofmt/Vet/Race/Fuzz, Cross-Builds, ARM-QEMU); R3 und weitere unten genannte Grenzen bewusst dokumentiert statt implementiert. Relay RUTX50 **0.4.1**, home-gw **0.4.0** (gleicher Kerncode).
+- **Zwei-Interface-Isolation** (Labor): bestanden — Gast-Leak-Positivkontrolle und Markerpakete belegt, `IP_MULTICAST_ALL=0` verhindert Cross-Interface-Zustellung.
+- **Frische Discovery + Geräte-HTTP** (live): bestanden — frische A/PTR/SRV/TXT für webui.local/sensor.local über Heim-Relay, HTTP 302/200, Paketfluss beidseitig.
+- **Echter Router-Flap (sustained down)**: produktiv bestanden — 32 DOWN-Messungen, 33,83 s bis Wiederherstellung, automatischer procd-Respawn (PID 30389→31967→32080), kein manueller Neustart.
+- **Managed Linux-Reconnect**: bestanden — ifdown/DHCP/ifup, autonome Route- und Relay-/systemd-Erholung, errors=0.
+- **Echtes Paket-Upgrade 0.4.0 → 0.4.1**: über RutOS-GUI bestanden — Prozesswechsel PID 32080→3054, installiertes Binary-Hash identisch zum Paket, UCI byteidentisch, kein manueller Agent-Restart.
+
+## Offen (kein Upgrade-Lifecycle)
+- **WebUI Save/Apply/Restart Live-Abnahme**: blockiert — Login heute abgelehnt (keine weiteren Versuche, keine Credentials angefordert). User meldet: kombiniertes Bundle **Relay 0.4.1 + UI 0.3.1 erfolgreich installiert**, aber **Schreib-/Apply-Tests noch nicht durchgeführt**.
+- **Reverse-Richtung große Pakete / vollständige MTU-Abnahme**: offen (nur Vorwärtsrichtung 1400/4000/8500 Byte belegt).
+- **Produktive Adressänderung**: im Labor bestanden, produktiv offen.
+
+## Akzeptierte Grenzen (bewusst, keine Implementierung)
+- Nur IPv4 (kein `ff02::fb`).
+- Service-Zielcache **nicht implementiert** (dokumentierte Einschränkung, R3).
+- RutOS/procd läuft weiterhin als **Root**.
+
+---
+
 Auftrag an das fixende LLM: Behebe die Findings in der Reihenfolge der Nummern. Pro Finding ein Commit. Ändere nichts außerhalb des genannten Umfangs.
 
 Kontext: Go 1.23, Linux-only (`sockets_linux.go`, `sockets_other.go` ist Stub). Module `mdns-vpn-bridge`. Kern in `internal/relay/relay.go`. Ziel-Plattformen u. a. 32-Bit MIPS/ARM (OpenWrt/RutOS).
@@ -463,6 +487,8 @@ Begründung für R2 vor R1: R2 ist klein, unabhängig und entschärft die Auswir
 
 ## Noch offen / nicht durch dieses Update geschlossen
 
+> **HISTORISCH / ÜBERHOLT.** Zeitstand vor den späteren Abschlüssen. Seitdem geschlossen: Zwei-Interface-Isolation (Labor), frische Discovery/HTTP, echter Router-Flap, Managed Linux-Reconnect, echtes 0.4.0→0.4.1-Upgrade. Maßgeblich: „AKTUELLER STATUS" oben. Liste bleibt als Beleg erhalten.
+
 1. **Zwei-Interface-Isolationstest:** Nachweis, dass Verkehr aus einem anderen Netzsegment nicht weitergeleitet wird.
 2. **Vollständige Discovery-/Dienstzugriffsabnahme mit 0.3.0 auf beiden Seiten:** steigende Zähler beweisen nicht jede Namensauflösung und jeden Dienst.
 3. **MTU/Fragmentierung und Zielrouter-Link-Flap/Reboot:** isolierter Linux-Versuch ersetzt diese Zielsystemtests nicht. Produktive Unterbrechungen separat freigeben lassen.
@@ -483,3 +509,89 @@ Begründung für R2 vor R1: R2 ist klein, unabhängig und entschärft die Auswir
 - Finale gemeinsame Prüfung: Formatierung, Build, Vet und Race-Suite dreimal bestanden; sechs Zielarchitekturen gebaut, RutOS-Init-/Debian-Paketierungstests bestanden. Isolierter echter Daemon las Datei beim Start, ignorierte spätere Änderung und übernahm sie erst nach Restart.
 - Paketierungs-/Konfigurationsdokumentation und neue Tests werden mit diesem ausdrücklich beauftragten Implementierungsstand versioniert; ältere Angaben zum unversionierten Release-Glue sind damit historisch.
 - Kein Produktivupgrade durch diesen Auftrag: installierte Relays bleiben auf 0.3.0. Netzabnahme und RutOS-Upgrade-Neustartproblem bleiben separat offen.
+
+## Anschließender freigegebener Rollout 0.4.0
+
+- Nach separatem Userauftrag „jetzt das bin verteilen“: Build aus Commit `6f96c9a`, Vet/Race-Prüfung und sechs Architektur-Builds bestanden; 0.4.0 auf beiden Gegenstellen aktiviert.
+- Linux: bisherige Einstellungen unverändert in `/etc/mdns-vpn-bridge/config.json` migriert, vor Aktivierung geprüft; ExecStart nur `-config`, bestehende Hardening-/Tailscale-Integration erhalten.
+- RutOS: IPK-Prüfsumme geprüft, opkg-Upgrade und expliziter Relay-Restart; UCI-Datei erhalten, kein JSON auf RutOS.
+- Laufende Versionen über `/proc/<pid>/exe version` auf beiden Hosts 0.4.0; Statuswerte, Paketfluss beidseitig und `errors=0` geprüft. Linux ohne automatische Neustarts.
+- Backups: Linux `/path/to/test-evidence/`; Router `/path/to/test-evidence/`. Keine Änderungen an VPN, Firewall oder Netzinterfaces; WebUI nicht aktualisiert.
+- Kein Hot-Reload. Vollständige Netzabnahme und automatischer RutOS-Upgrade-Restart bleiben offen; expliziter Neustart war Teil dieses Rollouts.
+
+## Freigegebene Live-Abnahme nach Rollout
+
+- Bericht: [Live-Abnahme 2026-11-05](docs/live-acceptance-2026-11-05.md).
+- Live: frische A/PTR/SRV/TXT-Erkennung, Geräte-HTTP, 1400/4000/8500-Byte-DNS auf realem VPN-Pfad; beide Zielgeräte tatsächlich rebootet und Relay-Autostart geprüft.
+- Exaktes Releasebinary im isolierten Zwei-Interface-/Adresswechseltest bestanden; Gastnetz-Leak-Positivkontrolle und Markerpakete belegt.
+- Produktive ens18-Unterbrechung: Relay-Wiederanlauf funktioniert; DHCP-Default-Route ging jedoch verloren. Gateway aus Lease geprüft, fehlende Route wiederhergestellt, VPN/Discovery danach wieder funktionsfähig. Autonome Host-Netzerholung bleibt offen.
+- Router: 24 kumulative Schreibfehler beim Boot vor VPN-Verfügbarkeit; danach selbstständig wieder funktionsfähig, Zähler blieb stabil. Nicht als errors=0 verkaufen.
+- Router-br-lan-down/up ausgeführt; anschließend frische Antworten und HTTP geprüft, Watchdog-Erkennung dieses Flaps nicht belegt.
+- WebUI-Livetest blockiert durch Login; keine weiteren Anmeldeversuche nach abgelehntem Vault-Dialog. Vollständige MTU-/Reverse-Large-Payload- und Package-Lifecycle-Abnahme weiter offen.
+
+### Korrektur nach Prüfung der Rohbelege
+
+- **Router-Flap nicht ausgeführt:** `/path/to/test-evidence/` enthält `ash: nohup: not found`. Die obige Aussage „down/up ausgeführt“ ist falsch und wird hier zurückgenommen; kein Nachweis für Watchdog-Erkennung oder Wiederanlauf nach diesem Flap.
+- **Linux-Route qualifiziert:** ifupdown/DHCP verwaltet ens18, dhclient lief weiter. Der Test benutzte direkt `ip link set` und umging die Verwaltung; daraus folgt kein belegter Fehler des normalen Wiederverbindungsablaufs. Fehlende Route wurde wiederhergestellt, aber kein dauerhafter Workaround eingebaut.
+- **Router-Boot:** 24 Fehler während fehlender VPN-Route, danach stabile Fehlerzahl und Verkehr. Erfolgreiche Erholung, kein belegter Relay-Defekt und kein zwingender Auftrag für VPN-Startblockierung.
+- **Hashabweichung geklärt:** lokales `build/linux-amd64` (`51ce8773…`) meldet tatsächlich `0.3.0 (ac38fa0)`, ausgeliefertes/getestetes Binary (`27268939…`) `0.4.0 (6f96c9a)`. Frühere Vermutung „beide 0.4.0, eventuell nicht reproduzierbar“ war falsch; veraltetes lokales Buildartefakt, keine nachgewiesene Build-Nichtreproduzierbarkeit.
+- **Offen bleiben (HISTORISCH / ÜBERHOLT — Stand vor den späteren Abschlüssen):** gültiger Router-Flap-Test mit garantiertem Restore, managergerechter Linux-Netztest, WebUI-Anmeldung/Schreibtest, automatische Paketupgrade-Aktivierung und verbleibende MTU-/Richtungstests. Akzeptanzkriterien stehen im verlinkten Bericht. *Seitdem geschlossen: Router-Flap, Managed Linux-Reconnect, automatische 0.4.0→0.4.1-Upgrade-Aktivierung. Weiter offen: WebUI-Schreibtest, MTU-/Richtungstests, produktive Adressänderung — siehe „AKTUELLER STATUS" oben.*
+- Aktuelle lesende Kontrolle: beide Relays aktiv; Linux Route vorhanden und errors=0, Router errors unverändert 24 bei weiterem Paketfluss. Keine neue produktive Änderung oder Featureimplementierung bei dieser Auswertung.
+
+### Vergleich mit installiertem Tailscale-Paket: Upgrade-Lifecycle
+
+- Installierte Hersteller-Hooks lesend geprüft: `tailscale.prerm` delegiert an `default_prerm`, `tailscale.postinst` an `default_postinst`; zusätzlich setzt postinst Capabilities auf tailscale.combined. Kein eigener erzwungener Daemon-Restart in diesen Hooks.
+- Aktuelles Relay-Paket delegiert ebenfalls an diese beiden nativen Helfer. Beide Paket-Dateilisten enthalten `/usr/local/etc/init.d/<dienst>`, passend zum opkg-Ziel `/usr/local` und zur Helfer-Selektion.
+- Native `/lib/functions.sh` SHA256 `f5c285f61cd0ac11463352dbf42fead9015cce390bfef1c4d76a561d93d4030b` entspricht exakt der privaten Referenz. `default_prerm` Zeilen 194–219 stoppt den Dienst, deaktiviert ihn beim Upgrade nicht; `default_postinst` Zeilen 284–294 startet ihn nach Installation. Stop vor Austausch, Start danach; kein Hot-Reload.
+- Wesentliche Migrationsgrenze: prerm stammt beim Upgrade aus dem ALTEN Paket. Ein neu hinzugefügtes prerm repariert nicht rückwirkend einen fehlenden/fehlerhaften alten Stop-Hook; postinst verwendet start, nicht restart. Dies ist eine zu prüfende Erklärung für den früher beobachteten alten Prozess, noch kein Nachweis für die damalige konkrete Paketversion.
+- Herstellermechanismus damit geklärt; früherer Upgradefehler nicht abschließend reproduziert. Kontrollierter Upgrade-Test muss alte Hooks/Dateiliste und tatsächlichen Prozesswechsel erfassen, ohne nachträglichen manuellen Restart. Tailscale selbst wurde weder aktualisiert noch neu gestartet.
+
+### Abschluss: Originalpaket und native Upgrade-Reproduktion
+
+- Original-Relay-IPK 0.2.0 gefunden und unabhängig kontrolliert: SHA256 `5d99e12cdff8e620d104d826458c221c42f16c7f95b96b9f56749fc5ccda50dd`, Buildhost `/path/to/test-evidence/`.
+- Kontrollarchiv enthält ausschließlich Verzeichnis und `control`: **kein prerm oder sonstiger Maintainer-Hook**. Binär-/Init-/Config-Pfade sind korrekt. Fehlender alter Stop-Hook ist damit am Original belegt.
+- Reproduktion auf Router mit tatsächlichem opkg 0.6.3 und unveränderten nativen Helfern im separaten Chroot, eigenem Testpaket, synthetischem Init und ARM-Testdaemon: ohne alten prerm bleibt PID 17833 / Version 0.2.0 trotz installierter Datei 0.3.0; mit altem nativen prerm wechselt PID 17926 auf 17971 / laufende Version 0.3.0. Beide Fälle erfolgreich geprüft, Testdaemons danach beendet.
+- Editierte Konfiguration blieb in beiden Fällen erhalten. Aus fehlendem altem conffiles allein folgt keine nachgewiesene Konfigurationsüberschreibung beim Upgrade auf ein neues Paket mit conffiles.
+- **Historische Ursache geklärt:** fehlende Paket-Hooks in 0.2.0, kein generelles Tailscale-/RutOS-Neustartproblem. Aktuelle Pakete enthalten native Hooks; direktes Upgrade aus hooklosem 0.2.0 bleibt ein gesonderter Migrationsfall, den neue prerm allein nicht rückwirkend lösen.
+- Grenzen: synthetischer Dienst statt procd; tatsächlicher produktiver Upgradepfad und Aktivierungszustand deaktivierter Dienste noch separat abzunehmen. Keine Installation in produktive Paketdatenbank, kein Neustart von Relay/Tailscale durch diese Untersuchung.
+- Details und Belege: [RutOS-Upgrade-Lifecycle](docs/rutos-upgrade-lifecycle.md). Kein zusätzlicher Neustartmechanismus implementiert.
+- Userentscheidung: kein Sonderpfad für Upgrades aus 0.2.0; vorhandene native Paket-Hooks genügen als Fix. Legacy-Migration ausdrücklich außerhalb des Scopes, kein offenes Implementierungsissue. Produktiv läuft beidseitig 0.4.0.
+- Nach ausdrücklichem Löschauftrag entfernt und Abwesenheit geprüft: SDK-IPKs 0.2.0 für Relay, alte API und alte UI sowie lokaler Git-Tag v0.2.0. Git-Commits, historische Befunde und synthetische Testfixtures bleiben erhalten; keine Remote-Tags oder Releases verändert.
+
+### Router-Flap-Abnahme abgeschlossen — gültiger Wiederholungstest
+
+- **Bestanden:** produktives br-lan über 32 DOWN-Messungen gehalten, 33,83 s von erster DOWN-Messung bis Wiederherstellung; UP_BIT durchgehend bei allen Messpunkten 0.
+- Zwei vorab überprüfte unabhängige procd-Testinstanzen: Worker plus separat bewaffnete UP-Rückversicherung. Kein nohup erforderlich.
+- Watchdog meldet zweimal Interface DOWN; tatsächliche automatische procd-Respawns, PID 30389 → 31967 → 32080, ausführendes Binary weiterhin 0.4.0.
+- Nach UP frische mDNS-Antworten über den Heim-Relay für webui.local und sensor.local; HTTP 302/200, Paketfluss beidseitig. **Kein manueller Relay-/VPN-Neustart.**
+- Letzte Instanz zählt 2 temporäre Schreibfehler aus DOWN-Phase; Zähler nach Wiederherstellung stabil. Kein Anspruch auf errors=0.
+- Temporärer Testdienst entfernt, leere procd-Serviceabfrage und br-lan UP nachgeprüft; bestehende UCI-Konfiguration unverändert.
+- Dieser Abnahmepunkt ist geschlossen; kein Codefix erforderlich. Kurze Flaps, physischer Carrierverlust, Adresswechsel und Linux-Netzerholung nicht durch diesen Test abgedeckt.
+- Bericht: [Router-Flap-Abnahme](docs/router-flap-acceptance-2026-11-05.md). Nächster offener Schwerpunkt: managergerechte Linux-Netzerholung.
+
+### Linux-Netzerholung abgeschlossen — managergerechter Reconnect
+
+- **Bestanden:** produktives ens18 via ifdown/DHCP heruntergefahren, 25 DOWN-Messpunkte über 25,07 s bis ifup; unabhängiger systemd-Fallback vorab bewaffnet, nach autonomer Erholung deaktiviert, nie ausgelöst.
+- DHCP-Client sauber beendet/Lease freigegeben; ifup erhielt DHCPACK für 192.0.2.5 und stellte Default-Route via 192.0.2.1 selbst wieder her. Keine manuelle Route-/Adressreparatur.
+- Relay-Watchdog und automatischer systemd-Wiederanlauf belegt, PID 672 → 1462, Restartzähler 1 → 2; neuer Prozess wartete auf DHCP-Adresse und nahm Betrieb wieder auf. Kein manueller Relay-/VPN-Restart.
+- Tailscale-Peer erreichbar; frische mDNS-Antworten für webui.local/sensor.local über Heim-Relay und HTTP 302/200 bestätigt. errors=0, Paketfluss beidseitig.
+- Testdienst erfolgreich beendet, Timer inaktiv/entladen; keine dauerhaften Netzwerk-/Unit-Änderungen. Dieser Abnahmepunkt ist geschlossen, kein Code- oder Host-Konfigurationsfix nötig.
+- Frühere fehlende Route nach direktem ip-link-Eingriff ist kein Beleg für fehlerhafte normale ifupdown-Erholung. Physischer Carrierverlust und andere DHCP-/Adressfehler bleiben außerhalb dieses Tests.
+- Bericht: [Linux-Reconnect-Abnahme](docs/linux-managed-reconnect-2026-11-05.md).
+
+### Neues Relay-Bundle 0.4.1 für Upgrade-Abnahme
+
+- Auf Userauftrag gebaut, nicht installiert/veröffentlicht: Quellstand `6f96c9a`, gleiche Funktionalität wie geprüfte 0.4.0; Versionsanhebung für echten Upgrade-Test. WebUI unverändert/separat.
+- Vet/Race-Suite, Init- und Debian-Paketierungstests bestanden; sechs Architekturen frisch gebaut. Bundle/control/feed-Version, Firmware RUTX_R_00.07.25.3, Payload-/Hook-/conffiles-Identität sowie Feed-Hash/Size geprüft.
+- IPK und GUI-Bundle aus denselben Inputs erneut gebaut: byteidentisch. Native opkg-Versionsordnung 0.4.1 >> 0.4.0 akzeptiert; tatsächliche GUI-Installation/Prozesswechsel noch ausstehend.
+- Auslieferung `dist/mdns-vpn-bridge_0.4.1_RUTX_00.07.25.3.tar.gz`, SHA256 `52fb5e63116d5f1a31eb83ee9dad35ee745c23fac8555626a959d12a57bf3f66`; passende IPK-/Linux-Archive und `dist/sha256sums-0.4.1.txt` vorhanden.
+- Keine produktiven Dienste neu gestartet; Nutzer kann Bundle im RutOS-Paketmanager hochladen. Nach Installation laufendes Binary und Konfiguration ohne zusätzlichen manuellen Restart prüfen.
+
+### Produktive Upgrade-Abnahme 0.4.0 → 0.4.1 bestanden
+
+- Nutzer hat Bundle über RutOS-GUI installiert; nachfolgend nur lesende Kontrollen/Discovery-Probes, kein zusätzlicher manueller Restart durch Agent.
+- Procd-/GUI-Logs: bisherige Instanz PID 32080 um 17:07:03 CET gestoppt, neue Instanz PID 3054 um 17:07:09 gestartet; GUI meldet erfolgreiches Upgrade auf 0.4.1. Kein weiterer Restart nach Paketkonfiguration im erfassten Log.
+- Paketstatus 0.4.1, laufendes `/proc/3054/exe version` = 0.4.1, kein `(deleted)`-Binary. SHA256 des installierten Binary `d35ed2ff06c4c62d26d5d83d6a65fc7d94c34d04f2359d4e5f44d613185606ae` entspricht exakt dem ausgelieferten Paket.
+- UCI byteidentisch zum gesicherten bisherigen Configstand, Prozessargumente unverändert: br-lan, Peer 198.51.100.1:53530, all/all, Stats 300s.
+- Frische mDNS-Antworten für webui.local und sensor.local über Heim-Relay sowie HTTP 302/200 bestätigt. Paketfluss beidseitig, errors=0 bei zwei aufeinanderfolgenden Statuskontrollen.
+- **Abnahmepunkt automatische Aktivierung beim aktuellen Paketupgrade geschlossen.** Vpngw bleibt unverändert auf 0.4.0; gleiche Kernfunktionalität, nur Relay-Releaseversion verschieden. WebUI Save/Apply/Restart und ergänzende MTU-/Richtungstests bleiben separate Punkte.
