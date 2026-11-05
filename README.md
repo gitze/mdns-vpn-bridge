@@ -1,5 +1,14 @@
 # mdns-vpn-bridge
 
+## Stable latest downloads
+
+- [Linux amd64 service/configuration archive](https://github.com/gitze/mdns-vpn-bridge/releases/latest/download/mdns-vpn-bridge_linux-amd64.tar.gz)
+- [Standalone RutOS relay IPK](https://github.com/gitze/mdns-vpn-bridge/releases/latest/download/mdns-vpn-bridge.ipk)
+- [Complete RutOS relay + WebUI bundle — one GUI upload](https://github.com/gitze/mdns-vpn-bridge-rutos-ui/releases/latest/download/mdns-vpn-bridge-complete.tar.gz)
+- [SHA256 checksums for this repository](https://github.com/gitze/mdns-vpn-bridge/releases/latest/download/sha256sums.txt)
+
+These URLs resolve to the latest stable GitHub release. Every future release must include the same versionless asset names alongside versioned artifacts and list both in its checksums. Confirm architecture/firmware compatibility in the release notes before installation.
+
 **mDNS/Bonjour across two LANs over a VPN tunnel — mDNS over VPN, Bonjour across subnets, without multicast routing.**
 
 `mdns-vpn-bridge` relays mDNS discovery traffic between two sites connected by a
