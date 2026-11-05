@@ -1,6 +1,6 @@
 [Unit]
 Description=mDNS VPN bridge — mDNS/Bonjour relay between two LANs over a unicast overlay
-Documentation=https://github.com/OWNER/mdns-vpn-bridge
+Documentation=https://github.com/gitze/mdns-vpn-bridge
 After=network-online.target
 Wants=network-online.target
 # If the overlay runs as its own service (e.g. tailscaled), add it here so the
@@ -20,6 +20,23 @@ ExecStart=/usr/local/bin/mdns-vpn-bridge \
     -stats 300s
 Restart=always
 RestartSec=5
+
+# Hardening. The mDNS port (5353) and the status port are both above 1024, so
+# the relay needs no privileges: it runs as a transient, dynamically allocated
+# user with an empty capability set.
+#
+# AF_NETLINK is required in addition to AF_INET: the Go net package enumerates
+# interfaces and addresses over route netlink. Restricting to "AF_INET AF_UNIX"
+# makes the relay fail at startup with
+# "netlinkrib: address family not supported by protocol" (verified on Debian 13,
+# systemd 257).
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target

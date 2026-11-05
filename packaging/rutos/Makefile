@@ -24,4 +24,8 @@ install: all
 clean:
 	@:  # the binary belongs to the repository build, not to the SDK
 
-.PHONY: all install clean
+# Isolated test of the init script's argument handling (no OpenWrt needed).
+check:
+	sh tests/init_test.sh
+
+.PHONY: all install clean check

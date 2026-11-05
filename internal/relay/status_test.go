@@ -73,3 +73,40 @@ func TestSnapshotWithoutStartTime(t *testing.T) {
 		t.Fatalf("uptime = %v", st.UptimeSeconds)
 	}
 }
+
+func TestStatusDedupeIsTopLevel(t *testing.T) {
+	c := &counters{}
+	c.dedupe.Store(123)
+	c.toPeerPkts.Store(9)
+
+	rec := httptest.NewRecorder()
+	statusHandler(c, Status{Started: time.Now().UTC().Format(time.RFC3339)}).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/_status", nil))
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, rec.Body.String())
+	}
+	// The aggregate must sit at the top level so the existing UI regex keeps
+	// matching; nesting it under to_peer/to_lan would break consumers.
+	d, ok := raw["dedupe"]
+	if !ok {
+		t.Fatalf("top-level %q field missing: %s", "dedupe", rec.Body.String())
+	}
+	var got uint64
+	if err := json.Unmarshal(d, &got); err != nil {
+		t.Fatalf("dedupe not a number: %v", err)
+	}
+	if got != 123 {
+		t.Fatalf("dedupe = %d, want 123", got)
+	}
+	for _, nested := range []string{"to_peer", "to_lan"} {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(raw[nested], &obj); err != nil {
+			t.Fatalf("%s not an object: %v", nested, err)
+		}
+		if _, exists := obj["dedupe"]; exists {
+			t.Errorf("dedupe must not be nested inside %s", nested)
+		}
+	}
+}

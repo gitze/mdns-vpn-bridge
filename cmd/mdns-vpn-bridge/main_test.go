@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +45,8 @@ func TestPrintStatus(t *testing.T) {
 		UptimeSeconds: 3600,
 		ToPeer:        relay.Counter{Packets: 10, Bytes: 2048, Dropped: 1},
 		ToLAN:         relay.Counter{Packets: 2, Bytes: 100},
+		Dedupe:        7,
+		Errors:        3,
 	}, "test")
 
 	out := b.String()
@@ -55,9 +59,129 @@ func TestPrintStatus(t *testing.T) {
 		"uptime     1h00m",
 		"-> peer    10 packets / 2.0 kB (dropped 1)",
 		"-> lan     2 packets / 100 B (dropped 0)",
+		"dedupe     7",
+		"errors     3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
 		}
+	}
+}
+
+// quietStderr silences the usage/error output runRelay writes so a failing
+// assertion is readable; the return code is what matters here.
+func quietStderr(t *testing.T) {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stderr = w
+	t.Cleanup(func() {
+		os.Stderr = old
+		_ = w.Close()
+		_, _ = io.Copy(io.Discard, r)
+	})
+}
+
+// runRelay must reject positional arguments instead of silently ignoring them.
+func TestRunRelayRejectsPositionals(t *testing.T) {
+	quietStderr(t)
+	for _, args := range [][]string{
+		{"extra"},
+		{"-lan", "eth0", "-peer", "100.64.0.1", "extra"},
+		{"-peer", "100.64.0.1", "stray", "words"},
+	} {
+		if got := runRelay(args); got != 2 {
+			t.Errorf("runRelay(%q) = %d, want 2", args, got)
+		}
+	}
+}
+
+// Missing required flags and unknown flags must fail with exit code 2, before
+// the relay ever starts (so the test cannot block on Run).
+func TestRunRelayRejectsBadInvocation(t *testing.T) {
+	quietStderr(t)
+	for _, args := range [][]string{
+		nil,
+		{"-lan", "eth0"},
+		{"-peer", "100.64.0.1"},
+		{"-nope"},
+	} {
+		if got := runRelay(args); got != 2 {
+			t.Errorf("runRelay(%q) = %d, want 2", args, got)
+		}
+	}
+}
+
+// -h prints usage and exits successfully (flag.ErrHelp).
+func TestRunRelayHelp(t *testing.T) {
+	quietStderr(t)
+	if got := runRelay([]string{"-h"}); got != 0 {
+		t.Errorf("runRelay(-h) = %d, want 0", got)
+	}
+}
+
+// The -linkbind flag parses into LinkBind and defaults to empty (0.0.0.0).
+func TestRelayFlagSetLinkBind(t *testing.T) {
+	var o relayOptions
+	fs := newRelayFlagSet(&o)
+	if err := fs.Parse(nil); err != nil {
+		t.Fatalf("parse nil: %v", err)
+	}
+	if o.linkBind != "" {
+		t.Fatalf("default linkbind = %q, want empty", o.linkBind)
+	}
+
+	o = relayOptions{}
+	fs = newRelayFlagSet(&o)
+	if err := fs.Parse([]string{"-linkbind", "100.64.0.1"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if o.linkBind != "100.64.0.1" {
+		t.Fatalf("linkbind = %q, want 100.64.0.1", o.linkBind)
+	}
+}
+
+// cmdStatus must reject positional arguments like the relay mode does, instead
+// of silently ignoring them (R7). The check runs before any network call, so
+// this is deterministic and needs no running instance.
+func TestCmdStatusRejectsPositionals(t *testing.T) {
+	quietStderr(t)
+	for _, args := range [][]string{
+		{"extra"},
+		{"-json", "stray"},
+		{"-addr", "127.0.0.1:53531", "extra", "words"},
+	} {
+		if got := cmdStatus(args); got != 2 {
+			t.Errorf("cmdStatus(%q) = %d, want 2", args, got)
+		}
+	}
+}
+
+// An unknown status flag is a usage error (exit code 2), not an os.Exit inside
+// the flag package (R7). ContinueOnError makes this observable in a test.
+func TestCmdStatusRejectsUnknownFlag(t *testing.T) {
+	quietStderr(t)
+	if got := cmdStatus([]string{"-nope"}); got != 2 {
+		t.Errorf("cmdStatus(-nope) = %d, want 2", got)
+	}
+}
+
+// -h prints usage and returns success without touching the network.
+func TestCmdStatusHelp(t *testing.T) {
+	quietStderr(t)
+	if got := cmdStatus([]string{"-h"}); got != 0 {
+		t.Errorf("cmdStatus(-h) = %d, want 0", got)
+	}
+}
+
+// A negative -dedupe is rejected with a usage error (R5); 0 is documented as
+// "the 2s default", not "off".
+func TestRunRelayRejectsNegativeDedupe(t *testing.T) {
+	quietStderr(t)
+	if got := runRelay([]string{"-lan", "eth0", "-peer", "100.64.0.1", "-dedupe", "-1s"}); got != 2 {
+		t.Errorf("runRelay(-dedupe -1s) = %d, want 2", got)
 	}
 }

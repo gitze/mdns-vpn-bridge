@@ -6,13 +6,21 @@ config mdns-vpn-bridge 'main'
 	option peer ''
 	# UDP port of the unicast link (must match on both sides)
 	option peerport '53530'
+	# Optional: local IPv4 the peer link socket binds to (default 0.0.0.0 =
+	# every interface). Set it to this host's overlay address to narrow the
+	# socket. Binding is a routing/hygiene aid, NOT authentication.
+	option linkbind ''
 	# LAN -> peer: 'query' (DNS queries only) or 'all'
 	# On a metered/chatty side use 'query'.
 	option lan2peer 'all'
 	# peer -> LAN: 'all' or 'query'
 	option peer2lan 'all'
-	# Optional: allowed service types for LAN -> peer (substring match,
-	# comma separated), e.g. '_http,_esphomelib'. Empty = all.
+	# Optional: allowed service types for LAN *multicast* -> peer only (label-exact
+	# name comparison, case-insensitive, see README; comma separated), e.g.
+	# '_http,_esphomelib'. Empty = all.
+	# Scope: this allowlist filters ONLY the LAN-multicast -> peer path. Unicast
+	# replies addressed to the relay's own LAN address and all peer -> LAN traffic
+	# bypass it (-peer2lan controls that direction). It is not a security boundary.
 	option services ''
 	# Stats log interval, 0 = off
 	option stats '300s'

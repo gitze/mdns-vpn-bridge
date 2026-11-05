@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -36,15 +37,53 @@ func main() {
 			fmt.Println(version)
 			return
 		case "help", "-h", "--help":
-			usage()
+			var o relayOptions
+			printUsage(os.Stderr, newRelayFlagSet(&o))
 			return
 		}
 	}
-	runRelay()
+	os.Exit(runRelay(os.Args[1:]))
 }
 
-func usage() {
-	fmt.Fprintf(os.Stderr, `mdns-vpn-bridge %s — mDNS/Bonjour between two LANs over a unicast VPN link
+// relayOptions holds the parsed relay flags.
+type relayOptions struct {
+	lanIf    string
+	lanIP    string
+	peer     string
+	peerPort int
+	linkBind string
+	lan2peer string
+	peer2lan string
+	services string
+	dedupe   time.Duration
+	verbose  bool
+	stats    time.Duration
+	status   string
+}
+
+// newRelayFlagSet defines the relay flags on a fresh FlagSet. Keeping the flags
+// in their own set (instead of the global flag.CommandLine) makes argument
+// handling testable and avoids cross-talk with the status subcommand.
+func newRelayFlagSet(o *relayOptions) *flag.FlagSet {
+	fs := flag.NewFlagSet("mdns-vpn-bridge", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.StringVar(&o.lanIf, "lan", "", "LAN interface carrying mDNS (e.g. ens18, br-lan)")
+	fs.StringVar(&o.lanIP, "lanip", "", "override the LAN IPv4 (default: taken from -lan)")
+	fs.StringVar(&o.peer, "peer", "", "peer unicast address on the overlay (Tailscale/WireGuard IPv4)")
+	fs.IntVar(&o.peerPort, "peerport", 53530, "UDP port of the unicast link (both sides)")
+	fs.StringVar(&o.linkBind, "linkbind", "", "local IPv4 the peer link socket binds to (default: 0.0.0.0 = every interface)")
+	fs.StringVar(&o.lan2peer, "lan2peer", "all", "LAN -> peer: \"query\" (DNS queries only) or \"all\"")
+	fs.StringVar(&o.peer2lan, "peer2lan", "all", "peer -> LAN: \"all\" or \"query\"")
+	fs.StringVar(&o.services, "services", "", "comma-separated allowlist of service types for LAN -> peer (e.g. _http,_esphomelib); empty = all")
+	fs.DurationVar(&o.dedupe, "dedupe", 2*time.Second, "loop-suppression window for identical packets; 0 selects the 2s default, negative is rejected")
+	fs.BoolVar(&o.verbose, "v", false, "log every forwarded packet")
+	fs.DurationVar(&o.stats, "stats", 300*time.Second, "stats log interval (0 = off)")
+	fs.StringVar(&o.status, "status", defaultStatusAddr, "HTTP status endpoint listen address (\"off\" disables it)")
+	return fs
+}
+
+func printUsage(w io.Writer, fs *flag.FlagSet) {
+	fmt.Fprintf(w, `mdns-vpn-bridge %s — mDNS/Bonjour between two LANs over a unicast VPN link
 
 usage:
   mdns-vpn-bridge -lan <iface> -peer <overlay-ip> [options]   run the relay
@@ -57,43 +96,49 @@ Typical asymmetric setup across a metered link:
 
 relay options:
 `, version)
-	flag.CommandLine.SetOutput(os.Stderr)
-	flag.PrintDefaults()
+	fs.SetOutput(w)
+	fs.PrintDefaults()
 }
 
-func runRelay() {
-	var (
-		lanIf    = flag.String("lan", "", "LAN interface carrying mDNS (e.g. ens18, br-lan)")
-		lanIP    = flag.String("lanip", "", "override the LAN IPv4 (default: taken from -lan)")
-		peer     = flag.String("peer", "", "peer unicast address on the overlay (Tailscale/WireGuard IPv4)")
-		peerPort = flag.Int("peerport", 53530, "UDP port of the unicast link (both sides)")
-		lan2peer = flag.String("lan2peer", "all", "LAN -> peer: \"query\" (DNS queries only) or \"all\"")
-		peer2lan = flag.String("peer2lan", "all", "peer -> LAN: \"all\" or \"query\"")
-		services = flag.String("services", "", "comma-separated allowlist of service types for LAN -> peer (e.g. _http,_esphomelib); empty = all")
-		dedupe   = flag.Duration("dedupe", 2*time.Second, "loop-suppression window for identical packets")
-		verbose  = flag.Bool("v", false, "log every forwarded packet")
-		stats    = flag.Duration("stats", 300*time.Second, "stats log interval (0 = off)")
-		status   = flag.String("status", defaultStatusAddr, "HTTP status endpoint listen address (\"off\" disables it)")
-	)
-	flag.Usage = usage
-	flag.Parse()
+func runRelay(args []string) int {
+	var o relayOptions
+	fs := newRelayFlagSet(&o)
+	fs.Usage = func() { printUsage(fs.Output(), fs) }
+
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		// flag has already printed the error and the usage text.
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: unexpected argument %q; the relay takes flags only (see -h)\n", fs.Arg(0))
+		printUsage(os.Stderr, fs)
+		return 2
+	}
+	if o.dedupe < 0 {
+		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: -dedupe must not be negative (0 selects the default %s)\n", 2*time.Second)
+		return 2
+	}
 
 	cfg := relay.Config{
-		LanIf:      *lanIf,
-		LanIP:      *lanIP,
-		Peer:       *peer,
-		PeerPort:   *peerPort,
-		Lan2Peer:   relay.Mode(*lan2peer),
-		Peer2LAN:   relay.Mode(*peer2lan),
-		Services:   relay.ParseServices(*services),
-		DedupeTTL:  *dedupe,
-		Verbose:    *verbose,
-		Stats:      *stats,
-		StatusAddr: *status,
+		LanIf:      o.lanIf,
+		LanIP:      o.lanIP,
+		Peer:       o.peer,
+		PeerPort:   o.peerPort,
+		LinkBind:   o.linkBind,
+		Lan2Peer:   relay.Mode(o.lan2peer),
+		Peer2LAN:   relay.Mode(o.peer2lan),
+		Services:   relay.ParseServices(o.services),
+		DedupeTTL:  o.dedupe,
+		Verbose:    o.verbose,
+		Stats:      o.stats,
+		StatusAddr: o.status,
 	}
 	if cfg.LanIf == "" || cfg.Peer == "" {
-		usage()
-		os.Exit(2)
+		printUsage(os.Stderr, fs)
+		return 2
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -101,17 +146,37 @@ func runRelay() {
 
 	if err := relay.Run(ctx, cfg); err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
-// cmdStatus queries a running instance and prints its state.
+// cmdStatus queries a running instance and prints its state. It returns a
+// process exit code and never calls os.Exit itself, so its argument handling is
+// testable. Like the relay mode it rejects positional arguments instead of
+// silently ignoring them (R7).
 func cmdStatus(args []string) int {
-	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
 	addr := fs.String("addr", defaultStatusAddr, "status endpoint of the running instance")
 	asJSON := fs.Bool("json", false, "print raw JSON")
 	timeout := fs.Duration("timeout", 3*time.Second, "request timeout")
-	_ = fs.Parse(args)
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "usage: mdns-vpn-bridge status [-addr <host:port>] [-json] [-timeout <dur>]\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		// flag has already printed the error and the usage text.
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge status: unexpected argument %q; the status command takes flags only (see -h)\n", fs.Arg(0))
+		fs.Usage()
+		return 2
+	}
 
 	if !strings.Contains(*addr, ":") {
 		*addr += ":53531"
@@ -166,6 +231,8 @@ func printStatus(w io.Writer, st relay.Status, ver string) {
 		st.ToPeer.Packets, humanBytes(st.ToPeer.Bytes), st.ToPeer.Dropped)
 	fmt.Fprintf(w, "  -> lan     %d packets / %s (dropped %d)\n",
 		st.ToLAN.Packets, humanBytes(st.ToLAN.Bytes), st.ToLAN.Dropped)
+	fmt.Fprintf(w, "  dedupe     %d suppressed\n", st.Dedupe)
+	fmt.Fprintf(w, "  errors     %d write errors\n", st.Errors)
 }
 
 func formatUptime(d time.Duration) string {

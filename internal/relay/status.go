@@ -28,12 +28,22 @@ type Status struct {
 	UptimeSeconds float64  `json:"uptime_seconds"`
 	ToPeer        Counter  `json:"to_peer"`
 	ToLAN         Counter  `json:"to_lan"`
+	// Dedupe is the number of packets suppressed as duplicates in either
+	// direction. It is a top-level field (not nested in to_peer/to_lan) so
+	// existing consumers keep working; the aggregate is what the UI shows.
+	Dedupe uint64 `json:"dedupe"`
+	// Errors is the number of write failures (peer link or LAN multicast) in
+	// either direction. Top-level and additive so the existing UI keeps
+	// working; the aggregate is what the UI shows.
+	Errors uint64 `json:"errors"`
 }
 
 // counters is the live statistics block of one relay instance.
 type counters struct {
 	toPeerPkts, toPeerBytes, toPeerDrop atomic.Uint64
 	toLANPkts, toLANBytes, toLANDrop    atomic.Uint64
+	dedupe                              atomic.Uint64
+	errors                              atomic.Uint64
 }
 
 func (c *counters) snapshot(base Status) Status {
@@ -48,6 +58,8 @@ func (c *counters) snapshot(base Status) Status {
 		Dropped: c.toLANDrop.Load(),
 	}
 	base.UptimeSeconds = time.Since(parseStarted(base.Started)).Seconds()
+	base.Dedupe = c.dedupe.Load()
+	base.Errors = c.errors.Load()
 	return base
 }
 

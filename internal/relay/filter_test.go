@@ -24,15 +24,14 @@ func TestIsQuery(t *testing.T) {
 }
 
 func TestServiceAllowed(t *testing.T) {
-	// A wire-format packet with labels: \x05_http\x04_tcp\x05local
-	pkt := append([]byte{0, 0, 0x84, 0, 0, 0, 1, 0, 0, 0, 0, 0},
-		5, '_', 'h', 't', 't', 'p', 4, '_', 't', 'c', 'p', 5, 'l', 'o', 'c', 'a', 'l', 0)
+	// A well-formed query for _http._tcp.local.
+	pkt := queryFor("_http._tcp.local", dnsTypePTR)
 
 	if !ServiceAllowed(pkt, nil) {
 		t.Error("empty allowlist must allow everything")
 	}
 	if !ServiceAllowed(pkt, []string{"_http"}) {
-		t.Error("packet containing _http must pass an allowlist containing _http")
+		t.Error("packet mentioning _http must pass an allowlist containing _http")
 	}
 	if ServiceAllowed(pkt, []string{"_ipp", "_esphomelib"}) {
 		t.Error("packet without a listed type must be dropped")
