@@ -103,16 +103,16 @@ edit-validate-restart procedure are in
 Build the release artifacts without the SDK (self-contained, deterministic):
 
 ```sh
-VERSION=0.5.0 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
-# dist/mdns-vpn-bridge_0.5.0_cortexa7hf-neon-vfpv4.ipk        (opkg install)
-# dist/mdns-vpn-bridge_0.5.0_RUTX_00.07.25.3.tar.gz          (GUI upload)
-# dist/mdns-vpn-bridge_0.5.0_linux-amd64.tar.gz              (Debian binary+unit)
+VERSION=0.5.1 COMMIT=$(git rev-parse --short HEAD) sh packaging/rutos/release.sh
+# dist/mdns-vpn-bridge_0.5.1_cortexa7hf-neon-vfpv4.ipk        (opkg install)
+# dist/mdns-vpn-bridge_0.5.1_RUTX_00.07.25.3.tar.gz          (GUI upload)
+# dist/mdns-vpn-bridge_0.5.1_linux-amd64.tar.gz              (Debian binary+unit)
 # dist/sha256sums.txt
 ```
 
 `release.sh` and the builders only write files under `dist/`: they do not
 install, start or restart anything and never touch a router. The embedded
-provenance reads e.g. `0.5.0 (<short-commit>)` — the committed base revision
+provenance reads e.g. `0.5.1 (<short-commit>)` — the committed base revision
 plus the release/packaging glue in the working tree (see `STABILIZATION.md`).
 
 The `*.tar.gz` bundle (`main` + IPK + `Packages.gz`) is what the RutOS WebUI
@@ -170,12 +170,13 @@ VM at the home site over an encrypted unicast overlay (Tailscale/WireGuard):
 
 - Corrections and verification: [STABILIZATION.md](STABILIZATION.md); the full
   review trail is in [FINDINGS.md](FINDINGS.md).
-- Current release: **0.5.0**. Release artifacts are built into `dist/`
+- Current release: **0.5.1**. Release artifacts are built into `dist/`
   (git-ignored) and install nothing by themselves. This version is prepared
-  here; it is **not** deployed by this repository.
+  here; it is **not** installed or deployed anywhere by this repository.
 - Live deployment (historical acceptance): the router runs 0.4.1, the Linux side
   0.4.0 (same core code) — the versions verified in the linked acceptance
-  reports. They are unchanged by the 0.5.0 packaging release.
+  reports. They are unchanged by the 0.5.1 release, which adds the running-
+  instance `version` status field but is not live-installed.
 - The optional RutOS WebUI is a separate project/release; it depends on the
   relay but does not replace its binary.
 
@@ -212,7 +213,7 @@ the same values are available on the command line:
 
 ```console
 $ mdns-vpn-bridge status
-mdns-vpn-bridge v0.5.0
+mdns-vpn-bridge v0.5.1
   lan        ens18 (192.168.10.10)
   peer       100.64.0.10:53530
   filter     lan2peer=query peer2lan=all
@@ -228,6 +229,17 @@ $ mdns-vpn-bridge status --json | jq .to_peer
 ```
 
 `mdns-vpn-bridge version` prints the build version.
+
+0.5.1 exposes a top-level `version` string in `/_status`: this is embedded in the
+running process, not read from a potentially replaced executable or the package
+database. Earlier releases omit it; consumers should show an unknown version
+rather than substitute the version of an installed or remote binary. The nested
+packet-counter objects remain unchanged. This build is not yet live-installed —
+only the release artifacts are prepared here.
+
+The human-readable `status` output shows that same running-instance version in
+its first line (the version the queried server reported), and prints `Unknown`
+when the server omits it — never the version of the local `status` binary.
 
 ### The filter — make it asymmetric
 

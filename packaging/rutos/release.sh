@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the mdns-vpn-bridge relay release artifacts.
 #
-#   VERSION=0.5.0 COMMIT=<short-commit> sh packaging/rutos/release.sh
+#   VERSION=0.5.1 COMMIT=<short-commit> sh packaging/rutos/release.sh
 #
 # Produces, under dist/ (git-ignored):
 #   mdns-vpn-bridge_<ver>_<arch>.ipk                 RutOS IPK (opkg install)
@@ -16,7 +16,7 @@
 # Provenance: the relay binaries embed VERSION and COMMIT. A release is cut from
 # a committed base revision (COMMIT, a short commit hash) plus the
 # release/packaging glue in the working tree, so `mdns-vpn-bridge help` prints
-# e.g. "0.5.0 (<short-commit>)" — the base commit, not a commit of the
+# e.g. "0.5.1 (<short-commit>)" — the base commit, not a commit of the
 # uncommitted glue.
 #
 # Binaries are always rebuilt: stale binaries may not support the packaged
@@ -26,7 +26,7 @@
 set -e
 cd "$(dirname "$0")/../.."   # repository root
 
-VERSION=${VERSION:-0.5.0}
+VERSION=${VERSION:-0.5.1}
 COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "")}
 ARCH=${ARCH:-cortexa7hf-neon-vfpv4}
 FIRMWARE=${FIRMWARE:-RUTX_R_00.07.25.3}

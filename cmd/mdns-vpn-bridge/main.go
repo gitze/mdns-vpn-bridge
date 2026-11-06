@@ -117,7 +117,7 @@ relay options:
 }
 
 // versionLabel returns the version with the source revision appended when a
-// build embedded one, e.g. "0.5.0 (<short-commit>)". The plain "version" subcommand
+// build embedded one, e.g. "0.5.1 (<short-commit>)". The plain "version" subcommand
 // still prints just the version number so scripts can parse it.
 func versionLabel() string {
 	if commit != "" {
@@ -146,6 +146,8 @@ func runRelay(args []string) int {
 		return 2
 	}
 
+	// Report this process's embedded version, never an on-disk replacement binary.
+	cfg.Version = version
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -217,14 +219,22 @@ func cmdStatus(args []string) int {
 		fmt.Fprintf(os.Stderr, "mdns-vpn-bridge: invalid status response: %v\n", err)
 		return 1
 	}
-	printStatus(os.Stdout, st, version)
+	printStatus(os.Stdout, st)
 	return 0
 }
 
-func printStatus(w io.Writer, st relay.Status, ver string) {
+// printStatus renders the human-readable status. The version line shows the
+// version the running instance reported on /_status (st.Version), never the
+// local client's own build version, and reports "Unknown" when the server
+// omitted it.
+func printStatus(w io.Writer, st relay.Status) {
 	svc := "-"
 	if len(st.Services) > 0 {
 		svc = strings.Join(st.Services, ",")
+	}
+	ver := st.Version
+	if ver == "" {
+		ver = "Unknown"
 	}
 	fmt.Fprintf(w, "mdns-vpn-bridge %s\n", ver)
 	fmt.Fprintf(w, "  lan        %s (%s)\n", st.LanIf, st.LanIP)

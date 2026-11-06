@@ -36,7 +36,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 FILES_DIR = HERE / "files"
 CONTROL_DIR = HERE / "control"
 
-DEFAULT_VERSION = "0.5.0"
+DEFAULT_VERSION = "0.5.1"
 DEFAULT_ARCH = "cortexa7hf-neon-vfpv4"
 DEFAULT_FIRMWARE = "RUTX_R_00.07.25.3"
 DEFAULT_ROUTER = "RUTX"

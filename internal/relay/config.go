@@ -9,6 +9,8 @@ import (
 // Config describes one relay instance. Every field except LanIf and Peer has
 // a usable default.
 type Config struct {
+	// Version identifies the running build for read-only status, not user configuration.
+	Version string
 	// LanIf is the interface whose multicast domain is served.
 	LanIf string
 	// LanIP overrides the IPv4 taken from LanIf. Optional.

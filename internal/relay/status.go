@@ -17,6 +17,8 @@ type Counter struct {
 // Status is the machine-readable state served on the status endpoint and
 // printed by the "status" subcommand.
 type Status struct {
+	// Version comes from the running process, independent of installed package metadata.
+	Version       string   `json:"version"`
 	LanIf         string   `json:"lan_if"`
 	LanIP         string   `json:"lan_ip"`
 	Peer          string   `json:"peer"`

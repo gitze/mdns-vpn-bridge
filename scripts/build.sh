@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 GO=${GO:-go}
 $GO version >/dev/null
 
-# A release build pins VERSION explicitly (e.g. VERSION=0.5.0) so the embedded
+# A release build pins VERSION explicitly (e.g. VERSION=0.5.1) so the embedded
 # string is the release number, not a git-describe value that can read like a
 # bare commit hash. COMMIT records the source revision for provenance.
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}

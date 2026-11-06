@@ -334,6 +334,7 @@ func Run(ctx context.Context, cfg Config) error {
 	peerErr := &errorLimiter{every: cfg.errorLogInterval}
 	lanErr := &errorLimiter{every: cfg.errorLogInterval}
 	base := Status{
+		Version:  cfg.Version,
 		LanIf:    cfg.LanIf,
 		LanIP:    lan.String(),
 		Peer:     peerIP.String(),

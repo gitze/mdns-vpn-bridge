@@ -29,7 +29,7 @@ check:
 	sh tests/init_test.sh
 
 # Release packaging (self-contained, no SDK needed): IPK + GUI bundle in DIST.
-VERSION ?= 0.5.0
+VERSION ?= 0.5.1
 COMMIT ?=
 DIST ?= ../../dist
 release:

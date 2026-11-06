@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -40,14 +42,15 @@ func TestHumanBytes(t *testing.T) {
 func TestPrintStatus(t *testing.T) {
 	var b bytes.Buffer
 	printStatus(&b, relay.Status{
-		LanIf: "ens18", LanIP: "192.0.2.5", Peer: "198.51.100.2", PeerPort: 53530,
+		Version: "test",
+		LanIf:   "ens18", LanIP: "192.0.2.5", Peer: "198.51.100.2", PeerPort: 53530,
 		Lan2Peer: relay.ModeQuery, Peer2LAN: relay.ModeAll,
 		UptimeSeconds: 3600,
 		ToPeer:        relay.Counter{Packets: 10, Bytes: 2048, Dropped: 1},
 		ToLAN:         relay.Counter{Packets: 2, Bytes: 100},
 		Dedupe:        7,
 		Errors:        3,
-	}, "test")
+	})
 
 	out := b.String()
 	for _, want := range []string{
@@ -183,5 +186,52 @@ func TestRunRelayRejectsNegativeDedupe(t *testing.T) {
 	quietStderr(t)
 	if got := runRelay([]string{"-lan", "eth0", "-peer", "100.64.0.1", "-dedupe", "-1s"}); got != 2 {
 		t.Errorf("runRelay(-dedupe -1s) = %d, want 2", got)
+	}
+}
+
+// The human-readable status must show the version the running instance reports
+// on /_status, never the local client's build version, and must say "Unknown"
+// when the server omits the field. This drives the real HTTP path in cmdStatus
+// against an httptest endpoint whose version deliberately differs from the
+// client's (captureStdout is shared with configfile_test.go).
+func TestCmdStatusShowsServerVersion(t *testing.T) {
+	oldVersion := version
+	version = "client-local-9999"
+	t.Cleanup(func() { version = oldVersion })
+
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"server version", `{"version":"9.8.7","lan_if":"eth0","lan_ip":"192.0.2.1","peer":"198.51.100.1"}`, "mdns-vpn-bridge 9.8.7"},
+		{"missing version", `{"lan_if":"eth0","lan_ip":"192.0.2.1","peer":"198.51.100.1"}`, "mdns-vpn-bridge Unknown"},
+		{"empty version", `{"version":"","lan_if":"eth0","lan_ip":"192.0.2.1","peer":"198.51.100.1"}`, "mdns-vpn-bridge Unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/_status" {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			addr := strings.TrimPrefix(srv.URL, "http://")
+			out := captureStdout(t, func() {
+				if got := cmdStatus([]string{"-addr", addr}); got != 0 {
+					t.Fatalf("cmdStatus = %d, want 0", got)
+				}
+			})
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("output missing %q\n---\n%s", tc.want, out)
+			}
+			if strings.Contains(out, "client-local-9999") {
+				t.Errorf("output leaked the local client version\n---\n%s", out)
+			}
+		})
 	}
 }
